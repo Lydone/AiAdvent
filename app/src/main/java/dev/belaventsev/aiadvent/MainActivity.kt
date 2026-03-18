@@ -45,14 +45,26 @@ class MainActivity : ComponentActivity() {
 fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
     val uiState by vm.uiState.collectAsState()
     var input by remember { mutableStateOf("") }
+    var additionPrompt by remember { mutableStateOf("") }
     Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedTextField(
             input,
             { input = it },
             Modifier.fillMaxWidth(),
             label = { Text("Вопрос") })
-        Button({ vm.ask(input) }, Modifier.fillMaxWidth()) { Text("Отправить") }
-
+        OutlinedTextField(
+            additionPrompt,
+            { additionPrompt = it },
+            Modifier.fillMaxWidth(),
+            label = { Text("Системный промпт") },
+        )
+        Button(
+            {
+                vm.ask(input, additionPrompt)
+                input = ""
+            },
+            Modifier.fillMaxWidth()
+        ) { Text("Отправить") }
         when (val s = uiState) {
             is ChatUiState.Loading -> CircularProgressIndicator()
             is ChatUiState.Success -> Text(s.answer)
