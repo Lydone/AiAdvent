@@ -2,7 +2,7 @@ package dev.belaventsev.aiadvent
 
 sealed interface ChatUiState {
     data object Idle : ChatUiState
-    data object Loading : ChatUiState
-    data class Success(val answer: String) : ChatUiState
+    data class Loading(val messages: List<ChatMessage> = emptyList()) : ChatUiState
     data class Error(val message: String) : ChatUiState
+    data class Success(val messages: List<ChatMessage> = emptyList()) : ChatUiState
 }
