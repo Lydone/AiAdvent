@@ -16,10 +16,10 @@ class ChatViewModel : ViewModel() {
 
     private val history = mutableListOf<ChatMessage>()
 
-    fun ask(query: String, systemPrompt: String = "") {
+    fun ask(query: String, systemPrompt: String = "", temperature: Double? = null) {
         val userMessage = ChatMessage(role = "user", content = query)
         history.add(userMessage)
-        viewModelScope.launch { _uiState.value = fetchAnswer(systemPrompt) }
+        viewModelScope.launch { _uiState.value = fetchAnswer(systemPrompt, temperature) }
     }
 
     fun reset() {
@@ -27,14 +27,15 @@ class ChatViewModel : ViewModel() {
         _uiState.value = ChatUiState.Idle
     }
 
-    private suspend fun fetchAnswer(systemPrompt: String): ChatUiState {
+    private suspend fun fetchAnswer(systemPrompt: String, temperature: Double?): ChatUiState {
         _uiState.value = ChatUiState.Loading(history.toList())
         return try {
             val answer = OpenRouterClient.service.chat(
                 auth = "Bearer ${BuildConfig.OPENROUTER_API_KEY}",
                 request = ChatRequest(
                     model = MODEL,
-                    messages = buildMessages(systemPrompt)
+                    messages = buildMessages(systemPrompt),
+                    temperature = temperature
                 )
             ).choices.first().message.content
 

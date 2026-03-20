@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,10 +24,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -61,6 +64,7 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
     val uiState by vm.uiState.collectAsState()
     var input by remember { mutableStateOf("") }
     var systemPrompt by remember { mutableStateOf("") }
+    var temperature by remember { mutableFloatStateOf(0.7f) }
     val messages = when (val s = uiState) {
         is ChatUiState.Success -> s.messages
         is ChatUiState.Loading -> s.messages
@@ -70,10 +74,16 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
     Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedTextField(
             systemPrompt, { systemPrompt = it },
-            Modifier.fillMaxWidth(),
+            Modifier.fillMaxWidth().heightIn(max = 100.dp),
             label = { Text("System prompt") },
-            minLines = 2
         )
+        Slider(
+            value = temperature,
+            onValueChange = { temperature = it },
+            valueRange = 0f..2f,
+            steps = 19
+        )
+        Text("Temperature: ${"%.1f".format(temperature)}")
 
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             items(messages) { MessageBubble(it) }
@@ -89,7 +99,7 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
-                onClick = { vm.ask(input, systemPrompt); input = "" },
+                onClick = { vm.ask(input, systemPrompt, temperature.toDouble()); input = "" },
                 enabled = uiState !is ChatUiState.Loading && input.isNotBlank(),
                 modifier = Modifier.weight(1f)
             ) { Text("Отправить") }
