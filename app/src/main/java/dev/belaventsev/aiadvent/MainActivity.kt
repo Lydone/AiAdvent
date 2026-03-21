@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package dev.belaventsev.aiadvent
 
 import android.content.ClipData
@@ -20,6 +22,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -61,10 +67,11 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
-    val uiState by vm.uiState.collectAsState()
+    val uiState = vm.uiState.collectAsState().value
     var input by remember { mutableStateOf("") }
-    var systemPrompt by remember { mutableStateOf("") }
-    var temperature by remember { mutableFloatStateOf(0.7f) }
+    var selectedModel by remember { mutableStateOf(ChatViewModel.MODELS.first()) }
+    var expanded by remember { mutableStateOf(false) }
+
     val messages = when (val s = uiState) {
         is ChatUiState.Success -> s.messages
         is ChatUiState.Loading -> s.messages
@@ -72,26 +79,39 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
     }
 
     Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(
-            systemPrompt, { systemPrompt = it },
-            Modifier.fillMaxWidth().heightIn(max = 100.dp),
-            label = { Text("System prompt") },
-        )
-        Slider(
-            value = temperature,
-            onValueChange = { temperature = it },
-            valueRange = 0f..2f,
-            steps = 19
-        )
-        Text("Temperature: ${"%.1f".format(temperature)}")
+        ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+            OutlinedTextField(
+                value = selectedModel.substringBefore(":"),
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Модель") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                modifier = Modifier.fillMaxWidth().menuAnchor()
+            )
+            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                ChatViewModel.MODELS.forEach { model ->
+                    DropdownMenuItem(
+                        text = { Text(model.substringBefore(":")) },
+                        onClick = { selectedModel = model; expanded = false }
+                    )
+                }
+            }
+        }
 
-        LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        LazyColumn(
+            Modifier.weight(1f).fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
             items(messages) { MessageBubble(it) }
         }
 
         when (uiState) {
             is ChatUiState.Loading -> CircularProgressIndicator()
-            is ChatUiState.Error -> Text((uiState as ChatUiState.Error).message)
+            is ChatUiState.Error -> Text(uiState.message)
+            is ChatUiState.Success -> {
+                Text("⏱ Время: ${uiState.elapsedMs} мс")
+                Text("🔢 Токены: ${uiState.tokensUsed}")
+            }
             else -> Unit
         }
 
@@ -99,7 +119,7 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
-                onClick = { vm.ask(input, systemPrompt, temperature.toDouble()); input = "" },
+                onClick = { vm.ask(input, selectedModel); input = "" },
                 enabled = uiState !is ChatUiState.Loading && input.isNotBlank(),
                 modifier = Modifier.weight(1f)
             ) { Text("Отправить") }

@@ -1,5 +1,7 @@
 package dev.belaventsev.aiadvent
 
+import com.google.gson.annotations.SerializedName
+
 data class ChatMessage(
     val role: String,
     val content: String
@@ -8,7 +10,7 @@ data class ChatMessage(
 data class ChatRequest(
     val model: String,
     val messages: List<ChatMessage>,
-    val temperature: Double?
+    val temperature: Double? = null
 )
 
 data class ChatChoice(
@@ -16,5 +18,12 @@ data class ChatChoice(
 )
 
 data class ChatResponse(
-    val choices: List<ChatChoice>
+    val choices: List<ChatChoice>,
+    val usage: Usage
+)
+
+data class Usage(
+    @SerializedName("prompt_tokens") val promptTokens: Int,
+    @SerializedName("completion_tokens") val completionTokens: Int,
+    @SerializedName("total_tokens") val totalTokens: Int
 )

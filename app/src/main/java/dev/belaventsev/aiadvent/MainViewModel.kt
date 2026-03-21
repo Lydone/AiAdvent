@@ -7,7 +7,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-private const val MODEL = "stepfun/step-3.5-flash:free"
+private const val STRONG_MODEL = "stepfun/step-3.5-flash:free"
+private const val MEDIUM_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
+private const val WEAK_MODEL = "google/gemma-3n-e2b-it:free"
 
 class ChatViewModel : ViewModel() {
 
@@ -16,10 +18,10 @@ class ChatViewModel : ViewModel() {
 
     private val history = mutableListOf<ChatMessage>()
 
-    fun ask(query: String, systemPrompt: String = "", temperature: Double? = null) {
+    fun ask(query: String, model: String) {
         val userMessage = ChatMessage(role = "user", content = query)
         history.add(userMessage)
-        viewModelScope.launch { _uiState.value = fetchAnswer(systemPrompt, temperature) }
+        viewModelScope.launch { _uiState.value = fetchAnswer(model) }
     }
 
     fun reset() {
@@ -27,27 +29,36 @@ class ChatViewModel : ViewModel() {
         _uiState.value = ChatUiState.Idle
     }
 
-    private suspend fun fetchAnswer(systemPrompt: String, temperature: Double?): ChatUiState {
+    private suspend fun fetchAnswer(model: String): ChatUiState {
         _uiState.value = ChatUiState.Loading(history.toList())
         return try {
-            val answer = OpenRouterClient.service.chat(
+            val startTime = System.currentTimeMillis()
+            val response = OpenRouterClient.service.chat(
                 auth = "Bearer ${BuildConfig.OPENROUTER_API_KEY}",
                 request = ChatRequest(
-                    model = MODEL,
-                    messages = buildMessages(systemPrompt),
-                    temperature = temperature
+                    model = model,
+                    messages = history.toList()
                 )
-            ).choices.first().message.content
+            )
+            val elapsed = System.currentTimeMillis() - startTime
+            val answer = response.choices.first().message.content
 
             history.add(ChatMessage(role = "assistant", content = answer))
-            ChatUiState.Success(history.toList())
+            ChatUiState.Success(
+                history.toList(),
+                elapsedMs = elapsed,
+                tokensUsed = response.usage.totalTokens
+            )
         } catch (e: Exception) {
             ChatUiState.Error(e.message ?: "Неизвестная ошибка")
         }
     }
 
-    private fun buildMessages(systemPrompt: String) = buildList {
-        if (systemPrompt.isNotBlank()) add(ChatMessage(role = "system", content = systemPrompt))
-        addAll(history)
+    companion object {
+        val MODELS = listOf(
+            WEAK_MODEL,
+            MEDIUM_MODEL,
+            STRONG_MODEL,
+        )
     }
 }
