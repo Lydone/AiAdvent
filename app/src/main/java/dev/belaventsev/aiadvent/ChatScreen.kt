@@ -52,7 +52,6 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
     }
     val isLoading = uiState is ChatUiState.Loading
 
-    // Автоскролл к низу при новых сообщениях или загрузке
     LaunchedEffect(messages.size, isLoading) {
         if (messages.isNotEmpty()) {
             val targetIndex = if (isLoading) messages.size else messages.lastIndex
@@ -64,7 +63,6 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
         .fillMaxSize()
         .padding(16.dp)) {
 
-        // История сообщений + индикатор загрузки
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -89,7 +87,6 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
             }
         }
 
-        // Ошибка
         if (uiState is ChatUiState.Error) {
             Text(
                 text = (uiState as ChatUiState.Error).message,
@@ -100,7 +97,6 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Поле ввода
         OutlinedTextField(
             value = input,
             onValueChange = { input = it },
@@ -113,7 +109,6 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Кнопки
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = {
