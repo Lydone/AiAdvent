@@ -10,7 +10,10 @@ data class ChatMessage(
 data class ChatRequest(
     val model: String,
     val messages: List<ChatMessage>,
-    val temperature: Double? = null
+    val temperature: Double? = null,
+//    val plugins: List<PluginConfig> = listOf(
+//        PluginConfig(id = "context-compression", enabled = false)
+//    )
 )
 
 data class ChatChoice(
@@ -26,4 +29,9 @@ data class Usage(
     @SerializedName("prompt_tokens") val promptTokens: Int,
     @SerializedName("completion_tokens") val completionTokens: Int,
     @SerializedName("total_tokens") val totalTokens: Int
+)
+
+data class PluginConfig(
+    val id: String,
+    val enabled: Boolean
 )

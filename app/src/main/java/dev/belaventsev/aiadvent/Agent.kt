@@ -6,36 +6,34 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
-/**
- * Агент — самостоятельная сущность, инкапсулирующая:
- * - роль (системный промпт)
- * - историю диалога (хранится в Room)
- * - логику общения с LLM
- *
- * Единственный публичный метод — ask().
- * История доступна реактивно через messages: Flow.
- * Room — единственный источник правды.
- */
 class Agent(
     private val dao: ChatMessageDao,
-    private val systemPrompt: String,
-    private val model: String = MODELS[1],
+    private val systemPrompt: String? = null,
+    private val model: String = MODELS[0],
     private val temperature: Double = 0.7
 ) {
-    /** Реактивная история — Room эмитит обновления автоматически. */
-    val messages: Flow<List<ChatMessage>> =
-        dao.observeAll().map { entities -> entities.map { it.toChatMessage() } }
+    val messagesWithTokens: Flow<List<MessageWithTokens>> =
+        dao.observeAll().map { entities ->
+            entities.map { entity ->
+                MessageWithTokens(
+                    message = entity.toChatMessage(),
+                    promptTokens = entity.promptTokens,
+                    completionTokens = entity.completionTokens,
+                    totalTokens = entity.totalTokens
+                )
+            }
+        }
 
-    /**
-     * Единственная точка входа:
-     * 1. Сохраняет сообщение пользователя в Room → Flow обновляется → UI видит сразу
-     * 2. Вызывает LLM → сохраняет ответ в Room → Flow обновляется
-     */
+    val totalSpent: Flow<Int> = dao.observeTotalSpent()
+
     suspend fun ask(query: String) {
         dao.insert(ChatMessageEntity.fromChatMessage(ChatMessage(role = "user", content = query)))
 
-        val history = messages.first()
-        val apiMessages = listOf(ChatMessage(role = "system", content = systemPrompt)) + history
+        val history = dao.observeAll().first().map { it.toChatMessage() }
+        val apiMessages = buildList {
+            systemPrompt?.let { add(ChatMessage(role = "system", content = it)) }
+            addAll(history)
+        }
 
         val response = OpenRouterClient.service.chat(
             auth = "Bearer ${BuildConfig.OPENROUTER_API_KEY}",
@@ -45,18 +43,11 @@ class Agent(
                 temperature = temperature
             )
         )
+
         val answer = response.choices.first().message.content
-        dao.insert(
-            ChatMessageEntity.fromChatMessage(
-                ChatMessage(
-                    role = "assistant",
-                    content = answer
-                )
-            )
-        )
+        dao.insert(ChatMessageEntity.fromAssistantResponse(answer, response.usage))
     }
 
-    /** Сброс контекста диалога. */
     suspend fun reset() {
         dao.deleteAll()
     }
@@ -69,3 +60,10 @@ class Agent(
         )
     }
 }
+
+data class MessageWithTokens(
+    val message: ChatMessage,
+    val promptTokens: Int = 0,
+    val completionTokens: Int = 0,
+    val totalTokens: Int = 0
+)

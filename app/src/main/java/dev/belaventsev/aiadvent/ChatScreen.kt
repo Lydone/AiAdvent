@@ -50,6 +50,11 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
         is ChatUiState.Loading -> s.messages
         else -> emptyList()
     }
+    val totalSpent = when (val s = uiState) {
+        is ChatUiState.Success -> s.totalSpent
+        is ChatUiState.Loading -> s.totalSpent
+        else -> 0
+    }
     val isLoading = uiState is ChatUiState.Loading
 
     LaunchedEffect(messages.size, isLoading) {
@@ -63,6 +68,7 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
         .fillMaxSize()
         .padding(16.dp)) {
 
+        // История сообщений
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -70,8 +76,8 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
                 .fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(messages) { msg ->
-                MessageBubble(message = msg)
+            items(messages) { item ->
+                MessageBubble(item)
             }
             if (isLoading) {
                 item {
@@ -87,6 +93,7 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
             }
         }
 
+        // Ошибка
         if (uiState is ChatUiState.Error) {
             Text(
                 text = (uiState as ChatUiState.Error).message,
@@ -95,8 +102,26 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
             )
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        // Панель токенов
+        if (totalSpent > 0) {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+            ) {
+                Text(
+                    text = "Потрачено токенов: $totalSpent",
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                )
+            }
+        }
 
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // Поле ввода
         OutlinedTextField(
             value = input,
             onValueChange = { input = it },
@@ -109,6 +134,7 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
 
         Spacer(modifier = Modifier.height(8.dp))
 
+        // Кнопки
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = {
@@ -131,10 +157,10 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
 }
 
 @Composable
-private fun MessageBubble(message: ChatMessage) {
+private fun MessageBubble(item: MessageWithTokens) {
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
-    val isUser = message.role == "user"
+    val isUser = item.message.role == "user"
 
     val containerColor = if (isUser)
         MaterialTheme.colorScheme.primaryContainer
@@ -155,15 +181,25 @@ private fun MessageBubble(message: ChatMessage) {
                 .clickable {
                     scope.launch {
                         clipboard.setClipEntry(
-                            ClipEntry(ClipData.newPlainText("message", message.content))
+                            ClipEntry(ClipData.newPlainText("message", item.message.content))
                         )
                     }
                 }
         ) {
             Text(
-                text = message.content,
+                text = item.message.content,
                 modifier = Modifier.padding(12.dp),
                 style = MaterialTheme.typography.bodyMedium
+            )
+        }
+
+        // Токены под assistant-сообщением
+        if (!isUser && item.totalTokens > 0) {
+            Text(
+                text = "контекст: ${item.promptTokens}  ·  ответ: ${item.completionTokens}  ·  итого: ${item.totalTokens}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 4.dp, top = 2.dp)
             )
         }
     }

@@ -8,9 +8,12 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface ChatMessageDao {
 
-    /** Реактивный поток всех сообщений — Room эмитит при каждом изменении таблицы. */
     @Query("SELECT * FROM chat_messages ORDER BY id ASC")
     fun observeAll(): Flow<List<ChatMessageEntity>>
+
+    /** Суммарный расход токенов за весь диалог. */
+    @Query("SELECT COALESCE(SUM(totalTokens), 0) FROM chat_messages")
+    fun observeTotalSpent(): Flow<Int>
 
     @Insert
     suspend fun insert(message: ChatMessageEntity)

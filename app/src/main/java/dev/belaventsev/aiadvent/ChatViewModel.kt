@@ -17,22 +17,22 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val agent = Agent(
         dao = dao,
-        systemPrompt = "Ты — дружелюбный ассистент. Отвечай кратко и по делу."
     )
 
     private val isLoading = MutableStateFlow(false)
     private val error = MutableStateFlow<String?>(null)
 
     val uiState: StateFlow<ChatUiState> = combine(
-        agent.messages,
+        agent.messagesWithTokens,
+        agent.totalSpent,
         isLoading,
         error
-    ) { messages, loading, err ->
+    ) { messages, spent, loading, err ->
         when {
             err != null -> ChatUiState.Error(err)
-            loading -> ChatUiState.Loading(messages)
+            loading -> ChatUiState.Loading(messages, spent)
             messages.isEmpty() -> ChatUiState.Idle
-            else -> ChatUiState.Success(messages)
+            else -> ChatUiState.Success(messages, spent)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ChatUiState.Idle)
 
