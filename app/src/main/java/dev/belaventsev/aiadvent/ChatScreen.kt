@@ -1,6 +1,7 @@
 package dev.belaventsev.aiadvent
 
 import android.content.ClipData
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,7 +36,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -41,26 +43,14 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
-    val uiState by vm.uiState.collectAsState()
+    val state by vm.uiState.collectAsState()
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
 
-    val messages = when (val s = uiState) {
-        is ChatUiState.Success -> s.messages
-        is ChatUiState.Loading -> s.messages
-        else -> emptyList()
-    }
-    val totalSpent = when (val s = uiState) {
-        is ChatUiState.Success -> s.totalSpent
-        is ChatUiState.Loading -> s.totalSpent
-        else -> 0
-    }
-    val isLoading = uiState is ChatUiState.Loading
-
-    LaunchedEffect(messages.size, isLoading) {
-        if (messages.isNotEmpty()) {
-            val targetIndex = if (isLoading) messages.size else messages.lastIndex
-            listState.animateScrollToItem(targetIndex)
+    LaunchedEffect(state.messages.size, state.isLoading) {
+        if (state.messages.isNotEmpty()) {
+            val target = if (state.isLoading) state.messages.size else state.messages.lastIndex
+            listState.animateScrollToItem(target)
         }
     }
 
@@ -68,7 +58,6 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
         .fillMaxSize()
         .padding(16.dp)) {
 
-        // История сообщений
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -76,52 +65,35 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
                 .fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(messages) { item ->
-                MessageBubble(item)
-            }
-            if (isLoading) {
+            items(state.messages) { item -> MessageBubble(item) }
+            if (state.isLoading) {
                 item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 16.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Box(Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 16.dp), Alignment.Center) {
                         CircularProgressIndicator(strokeWidth = 2.dp)
                     }
                 }
             }
         }
 
-        // Ошибка
-        if (uiState is ChatUiState.Error) {
+        state.error?.let {
             Text(
-                text = (uiState as ChatUiState.Error).message,
+                it,
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(vertical = 4.dp)
             )
         }
 
-        // Панель токенов
-        if (totalSpent > 0) {
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                shape = MaterialTheme.shapes.small,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp)
-            ) {
-                Text(
-                    text = "Потрачено токенов: $totalSpent",
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                )
-            }
-        }
+        TokenPanel(
+            totalSpent = state.totalSpent,
+            useCompression = state.useCompression,
+            summaryText = state.summaryText,
+            onToggle = vm::toggleCompression
+        )
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(Modifier.height(4.dp))
 
-        // Поле ввода
         OutlinedTextField(
             value = input,
             onValueChange = { input = it },
@@ -129,28 +101,78 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
                 .fillMaxWidth()
                 .heightIn(max = 120.dp),
             placeholder = { Text("Введите сообщение…") },
-            enabled = !isLoading
+            enabled = !state.isLoading
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(Modifier.height(8.dp))
 
-        // Кнопки
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = {
                     val text = input.trim()
                     if (text.isNotEmpty()) {
-                        vm.ask(text)
-                        input = ""
+                        vm.ask(text); input = ""
                     }
                 },
-                enabled = !isLoading && input.isNotBlank()
+                enabled = !state.isLoading && input.isNotBlank()
+            ) { Text("Отправить") }
+
+            OutlinedButton(onClick = vm::reset) { Text("Сбросить") }
+        }
+    }
+}
+
+@Composable
+private fun TokenPanel(
+    totalSpent: Int,
+    useCompression: Boolean,
+    summaryText: String?,
+    onToggle: () -> Unit
+) {
+    var summaryExpanded by remember { mutableStateOf(false) }
+
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = MaterialTheme.shapes.small,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Отправить")
+                Column {
+                    if (totalSpent > 0) {
+                        Text(
+                            "Потрачено токенов: $totalSpent",
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                    if (summaryText != null) {
+                        Text(
+                            text = if (summaryExpanded) "▼ Summary" else "▶ Summary",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.clickable { summaryExpanded = !summaryExpanded }
+                        )
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Сжатие", style = MaterialTheme.typography.labelSmall)
+                    Spacer(Modifier.width(4.dp))
+                    Switch(checked = useCompression, onCheckedChange = { onToggle() })
+                }
             }
 
-            OutlinedButton(onClick = { vm.reset() }) {
-                Text("Сбросить")
+            AnimatedVisibility(visible = summaryExpanded && summaryText != null) {
+                Text(
+                    text = summaryText.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
             }
         }
     }
@@ -162,26 +184,22 @@ private fun MessageBubble(item: MessageWithTokens) {
     val scope = rememberCoroutineScope()
     val isUser = item.message.role == "user"
 
-    val containerColor = if (isUser)
-        MaterialTheme.colorScheme.primaryContainer
-    else
-        MaterialTheme.colorScheme.surfaceVariant
-
-    val alignment = if (isUser) Alignment.End else Alignment.Start
-
     Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = alignment
+        horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
     ) {
         Surface(
-            color = containerColor,
+            color = if (isUser) MaterialTheme.colorScheme.primaryContainer
+            else MaterialTheme.colorScheme.surfaceVariant,
             shape = MaterialTheme.shapes.medium,
             modifier = Modifier
                 .widthIn(max = 300.dp)
                 .clickable {
                     scope.launch {
                         clipboard.setClipEntry(
-                            ClipEntry(ClipData.newPlainText("message", item.message.content))
+                            androidx.compose.ui.platform.ClipEntry(
+                                ClipData.newPlainText("message", item.message.content)
+                            )
                         )
                     }
                 }
@@ -193,7 +211,6 @@ private fun MessageBubble(item: MessageWithTokens) {
             )
         }
 
-        // Токены под assistant-сообщением
         if (!isUser && item.totalTokens > 0) {
             Text(
                 text = "контекст: ${item.promptTokens}  ·  ответ: ${item.completionTokens}  ·  итого: ${item.totalTokens}",

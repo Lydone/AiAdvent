@@ -9,52 +9,63 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val dao = AppDatabase.getInstance(application).chatMessageDao()
-
+    private val db = AppDatabase.getInstance(application)
     private val agent = Agent(
-        dao = dao,
+        chatDao = db.chatMessageDao(),
+        summaryDao = db.summaryDao(),
+        systemPrompt = "Ты — дружелюбный ассистент. Отвечай кратко и по делу."
     )
 
-    private val isLoading = MutableStateFlow(false)
-    private val error = MutableStateFlow<String?>(null)
+    private val vmState = MutableStateFlow(VmState())
 
     val uiState: StateFlow<ChatUiState> = combine(
         agent.messagesWithTokens,
         agent.totalSpent,
-        isLoading,
-        error
-    ) { messages, spent, loading, err ->
-        when {
-            err != null -> ChatUiState.Error(err)
-            loading -> ChatUiState.Loading(messages, spent)
-            messages.isEmpty() -> ChatUiState.Idle
-            else -> ChatUiState.Success(messages, spent)
-        }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ChatUiState.Idle)
+        agent.summary,
+        vmState
+    ) { messages, spent, summary, vm ->
+        ChatUiState(
+            messages = messages,
+            totalSpent = spent,
+            isLoading = vm.isLoading,
+            error = vm.error,
+            useCompression = vm.useCompression,
+            summaryText = summary?.text
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ChatUiState())
 
     fun ask(query: String) {
-        error.value = null
-        isLoading.value = true
+        vmState.update { it.copy(error = null, isLoading = true) }
         viewModelScope.launch {
             try {
-                agent.ask(query)
+                agent.ask(query, vmState.value.useCompression)
             } catch (e: Exception) {
-                error.value = e.message ?: "Неизвестная ошибка"
+                vmState.update { it.copy(error = e.message ?: "Неизвестная ошибка") }
             } finally {
-                isLoading.value = false
+                vmState.update { it.copy(isLoading = false) }
             }
         }
+    }
+
+    fun toggleCompression() {
+        vmState.update { it.copy(useCompression = !it.useCompression) }
     }
 
     fun reset() {
         viewModelScope.launch {
             agent.reset()
-            error.value = null
-            isLoading.value = false
+            vmState.update { it.copy(error = null, isLoading = false) }
         }
     }
+
+    private data class VmState(
+        val isLoading: Boolean = false,
+        val error: String? = null,
+        val useCompression: Boolean = false
+    )
 }

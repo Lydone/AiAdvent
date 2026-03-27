@@ -3,6 +3,7 @@ package dev.belaventsev.aiadvent.db
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import dev.belaventsev.aiadvent.ChatMessage
+import dev.belaventsev.aiadvent.MessageWithTokens
 import dev.belaventsev.aiadvent.Usage
 
 @Entity(tableName = "chat_messages")
@@ -15,7 +16,14 @@ data class ChatMessageEntity(
     val completionTokens: Int = 0,
     val totalTokens: Int = 0
 ) {
-    fun toChatMessage() = ChatMessage(role = role, content = content)
+    fun toChatMessage() = ChatMessage(role, content)
+
+    fun toMessageWithTokens() = MessageWithTokens(
+        message = toChatMessage(),
+        promptTokens = promptTokens,
+        completionTokens = completionTokens,
+        totalTokens = totalTokens
+    )
 
     companion object {
         fun fromChatMessage(msg: ChatMessage) =

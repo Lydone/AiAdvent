@@ -11,7 +11,9 @@ interface ChatMessageDao {
     @Query("SELECT * FROM chat_messages ORDER BY id ASC")
     fun observeAll(): Flow<List<ChatMessageEntity>>
 
-    /** Суммарный расход токенов за весь диалог. */
+    @Query("SELECT * FROM chat_messages ORDER BY id ASC")
+    suspend fun getAll(): List<ChatMessageEntity>
+
     @Query("SELECT COALESCE(SUM(totalTokens), 0) FROM chat_messages")
     fun observeTotalSpent(): Flow<Int>
 

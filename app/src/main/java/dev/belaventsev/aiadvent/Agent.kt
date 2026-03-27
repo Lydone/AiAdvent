@@ -1,62 +1,141 @@
 package dev.belaventsev.aiadvent
 
+import dev.belaventsev.aiadvent.Agent.Companion.MAX_RETRIES
 import dev.belaventsev.aiadvent.db.ChatMessageDao
 import dev.belaventsev.aiadvent.db.ChatMessageEntity
+import dev.belaventsev.aiadvent.db.SummaryDao
+import dev.belaventsev.aiadvent.db.SummaryEntity
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 class Agent(
-    private val dao: ChatMessageDao,
+    private val chatDao: ChatMessageDao,
+    private val summaryDao: SummaryDao,
     private val systemPrompt: String? = null,
-    private val model: String = MODELS[0],
+    private val model: String = MODELS[2],
     private val temperature: Double = 0.7
 ) {
     val messagesWithTokens: Flow<List<MessageWithTokens>> =
-        dao.observeAll().map { entities ->
-            entities.map { entity ->
-                MessageWithTokens(
-                    message = entity.toChatMessage(),
-                    promptTokens = entity.promptTokens,
-                    completionTokens = entity.completionTokens,
-                    totalTokens = entity.totalTokens
-                )
-            }
+        chatDao.observeAll().map { entities ->
+            entities.map { it.toMessageWithTokens() }
         }
 
-    val totalSpent: Flow<Int> = dao.observeTotalSpent()
+    val totalSpent: Flow<Int> = chatDao.observeTotalSpent()
 
-    suspend fun ask(query: String) {
-        dao.insert(ChatMessageEntity.fromChatMessage(ChatMessage(role = "user", content = query)))
+    val summary: Flow<SummaryEntity?> = summaryDao.observe()
 
-        val history = dao.observeAll().first().map { it.toChatMessage() }
-        val apiMessages = buildList {
-            systemPrompt?.let { add(ChatMessage(role = "system", content = it)) }
-            addAll(history)
+    suspend fun ask(query: String, useCompression: Boolean) {
+        chatDao.insert(ChatMessageEntity.fromChatMessage(ChatMessage("user", query)))
+
+        val apiMessages = if (useCompression) compressedMessages() else fullMessages()
+
+        val response = retrying {
+            OpenRouterClient.service.chat(
+                auth = "Bearer ${BuildConfig.OPENROUTER_API_KEY}",
+                request = ChatRequest(model, apiMessages, temperature)
+            )
         }
 
-        val response = OpenRouterClient.service.chat(
-            auth = "Bearer ${BuildConfig.OPENROUTER_API_KEY}",
-            request = ChatRequest(
-                model = model,
-                messages = apiMessages,
-                temperature = temperature
+        chatDao.insert(
+            ChatMessageEntity.fromAssistantResponse(
+                response.choices.first().message.content,
+                response.usage
             )
         )
-
-        val answer = response.choices.first().message.content
-        dao.insert(ChatMessageEntity.fromAssistantResponse(answer, response.usage))
     }
 
     suspend fun reset() {
-        dao.deleteAll()
+        chatDao.deleteAll()
+        summaryDao.deleteAll()
+    }
+
+    private suspend fun fullMessages(): List<ChatMessage> = buildList {
+        systemPrompt?.let { add(ChatMessage("system", it)) }
+        addAll(chatDao.getAll().map { it.toChatMessage() })
+    }
+
+    private suspend fun compressedMessages(): List<ChatMessage> {
+        val all = chatDao.getAll()
+        val summary = summaryDao.get()
+        val unsummarized =
+            if (summary != null) all.filter { it.id > summary.lastMessageId } else all
+
+        if (unsummarized.size > WINDOW_SIZE) {
+            val toSummarize = unsummarized.dropLast(WINDOW_SIZE)
+            summaryDao.upsert(
+                SummaryEntity(
+                    text = summarize(summary?.text, toSummarize.map { it.toChatMessage() }),
+                    lastMessageId = toSummarize.last().id
+                )
+            )
+        }
+
+        val finalSummary = summaryDao.get()
+        val recent =
+            if (finalSummary != null) all.filter { it.id > finalSummary.lastMessageId } else all
+
+        return buildList {
+            systemPrompt?.let { add(ChatMessage("system", it)) }
+            finalSummary?.let {
+                add(
+                    ChatMessage(
+                        "system",
+                        "Краткое содержание предыдущего диалога:\n${it.text}"
+                    )
+                )
+            }
+            addAll(recent.map { it.toChatMessage() })
+        }
+    }
+
+    private suspend fun summarize(previousSummary: String?, messages: List<ChatMessage>): String {
+        val prompt = buildString {
+            append("Кратко резюмируй следующий диалог в 2-3 предложениях на русском языке. ")
+            append("Сохрани ключевые факты и контекст.\n\n")
+            previousSummary?.let { append("Предыдущее резюме: $it\n\n") }
+            append("Новые сообщения:\n")
+            messages.forEach { append("${it.role}: ${it.content}\n") }
+        }
+
+        val response = retrying {
+            OpenRouterClient.service.chat(
+                auth = "Bearer ${BuildConfig.OPENROUTER_API_KEY}",
+                request = ChatRequest(model, listOf(ChatMessage("user", prompt)), 0.3)
+            )
+        }
+
+        return response.choices.first().message.content
+    }
+
+    /**
+     * Выполняет блок до [MAX_RETRIES] раз с экспоненциальной задержкой.
+     * Если все попытки неуспешны — пробрасывает последнее исключение.
+     */
+    private suspend fun <T> retrying(block: suspend () -> T): T {
+        var lastException: Exception? = null
+        repeat(MAX_RETRIES) { attempt ->
+            try {
+                return block()
+            } catch (e: Exception) {
+                lastException = e
+                if (attempt < MAX_RETRIES - 1) {
+                    delay(RETRY_DELAY_MS * (attempt + 1))
+                }
+            }
+        }
+        throw lastException!!
     }
 
     companion object {
+        const val WINDOW_SIZE = 6
+        const val MAX_RETRIES = 3
+        const val RETRY_DELAY_MS = 1000L
+
         val MODELS = listOf(
-            "google/gemma-3n-e2b-it:free",           // слабая, 2B
-            "nvidia/nemotron-3-super-120b-a12b:free", // средняя, 120B/12B
-            "stepfun/step-3.5-flash:free"             // сильная, 196B/11B
+            "google/gemma-3n-e2b-it:free",
+            "nvidia/nemotron-3-super-120b-a12b:free",
+            "stepfun/step-3.5-flash:free"
         )
     }
 }

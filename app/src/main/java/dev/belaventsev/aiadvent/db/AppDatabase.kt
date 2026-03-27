@@ -5,10 +5,12 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [ChatMessageEntity::class], version = 1)
+@Database(entities = [ChatMessageEntity::class, SummaryEntity::class], version = 1)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun chatMessageDao(): ChatMessageDao
+
+    abstract fun summaryDao(): SummaryDao
 
     companion object {
         @Volatile
