@@ -70,5 +70,7 @@ dependencies {
     implementation(libs.logging.interceptor)
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
+    implementation(libs.datastore)
+    implementation(libs.navigation.compose)
     ksp(libs.room.compiler)
 }

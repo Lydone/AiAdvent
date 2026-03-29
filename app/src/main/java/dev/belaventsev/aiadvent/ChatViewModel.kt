@@ -15,27 +15,38 @@ import kotlinx.coroutines.launch
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = AppDatabase.getInstance(application)
+    private val settingsRepository = SettingsRepository(application)
+
     private val agent = Agent(
         chatDao = db.chatMessageDao(),
         summaryDao = db.summaryDao(),
-        systemPrompt = "Ты — дружелюбный ассистент. Отвечай кратко и по делу."
+        factsDao = db.factsDao(),
+        branchDao = db.branchDao(),
+        systemPrompt = "Ты — дружелюбный ассистент. Отвечай кратко и по делу. Не используй markdown-разметку в ответах: без **, ##, ```, таблиц и списков с дефисами. Пиши простым текстом."
     )
 
     private val vmState = MutableStateFlow(VmState())
 
+    init {
+        viewModelScope.launch {
+            settingsRepository.strategyType.collect { agent.setStrategy(it) }
+        }
+    }
+
     val uiState: StateFlow<ChatUiState> = combine(
-        agent.messagesWithTokens,
-        agent.totalSpent,
-        agent.summary,
+        agent.messages,
+        agent.metadata,
         vmState
-    ) { messages, spent, summary, vm ->
+    ) { messages, meta, vm ->
         ChatUiState(
             messages = messages,
-            totalSpent = spent,
+            totalSpent = meta.totalSpent,
             isLoading = vm.isLoading,
             error = vm.error,
-            useCompression = vm.useCompression,
-            summaryText = summary?.text
+            strategy = meta.strategyType,
+            facts = meta.facts,
+            currentBranchId = meta.currentBranchId,
+            branches = meta.branches
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ChatUiState())
 
@@ -43,17 +54,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         vmState.update { it.copy(error = null, isLoading = true) }
         viewModelScope.launch {
             try {
-                agent.ask(query, vmState.value.useCompression)
+                agent.ask(query)
             } catch (e: Exception) {
                 vmState.update { it.copy(error = e.message ?: "Неизвестная ошибка") }
             } finally {
                 vmState.update { it.copy(isLoading = false) }
             }
         }
-    }
-
-    fun toggleCompression() {
-        vmState.update { it.copy(useCompression = !it.useCompression) }
     }
 
     fun reset() {
@@ -63,9 +70,24 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setStrategy(type: ContextStrategyType) {
+        viewModelScope.launch { settingsRepository.setStrategy(type) }
+    }
+
+    fun createBranch(name: String) {
+        viewModelScope.launch {
+            try {
+                agent.createBranch(name)
+            } catch (e: Exception) {
+                vmState.update { it.copy(error = e.message) }
+            }
+        }
+    }
+
+    fun switchBranch(branchId: String) = agent.switchBranch(branchId)
+
     private data class VmState(
         val isLoading: Boolean = false,
-        val error: String? = null,
-        val useCompression: Boolean = false
+        val error: String? = null
     )
 }

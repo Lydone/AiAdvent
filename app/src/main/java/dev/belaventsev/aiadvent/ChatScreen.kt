@@ -13,19 +13,29 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -41,8 +51,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
+fun ChatScreen(
+    modifier: Modifier = Modifier,
+    vm: ChatViewModel = viewModel(),
+    onNavigateToSettings: () -> Unit
+) {
     val state by vm.uiState.collectAsState()
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -54,122 +69,195 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
         }
     }
 
-    Column(modifier = modifier
-        .fillMaxSize()
-        .padding(16.dp)) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        when (state.strategy) {
+                            is ContextStrategyType.SlidingWindow -> "Sliding Window"
+                            is ContextStrategyType.StickyFacts -> "Sticky Facts"
+                            is ContextStrategyType.Branching -> "Branching"
+                        },
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateToSettings) {
+                        Icon(Icons.Default.Settings, contentDescription = "Настройки")
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Column(modifier = modifier
+            .fillMaxSize()
+            .padding(padding)
+            .padding(horizontal = 16.dp)) {
 
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(state.messages) { item -> MessageBubble(item) }
-            if (state.isLoading) {
-                item {
-                    Box(Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 16.dp), Alignment.Center) {
-                        CircularProgressIndicator(strokeWidth = 2.dp)
+            if (state.strategy is ContextStrategyType.Branching) {
+                BranchBar(state.currentBranchId, state.branches, vm::switchBranch, vm::createBranch)
+            }
+
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(state.messages) { MessageBubble(it) }
+                if (state.isLoading) {
+                    item {
+                        Box(Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 16.dp), Alignment.Center) {
+                            CircularProgressIndicator(strokeWidth = 2.dp)
+                        }
                     }
                 }
             }
-        }
 
-        state.error?.let {
-            Text(
-                it,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(vertical = 4.dp)
+            state.error?.let {
+                Text(
+                    it,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+            }
+
+            if (state.strategy is ContextStrategyType.StickyFacts && state.facts != null) {
+                FactsPanel(state.facts!!)
+            }
+
+            if (state.totalSpent > 0) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                ) {
+                    Text(
+                        "Потрачено токенов: ${state.totalSpent}",
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(4.dp))
+
+            OutlinedTextField(
+                value = input,
+                onValueChange = { input = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 120.dp),
+                placeholder = { Text("Введите сообщение…") },
+                enabled = !state.isLoading
             )
-        }
 
-        TokenPanel(
-            totalSpent = state.totalSpent,
-            useCompression = state.useCompression,
-            summaryText = state.summaryText,
-            onToggle = vm::toggleCompression
-        )
+            Spacer(Modifier.height(8.dp))
 
-        Spacer(Modifier.height(4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        val text = input.trim()
+                        if (text.isNotEmpty()) {
+                            vm.ask(text); input = ""
+                        }
+                    },
+                    enabled = !state.isLoading && input.isNotBlank()
+                ) { Text("Отправить") }
 
-        OutlinedTextField(
-            value = input,
-            onValueChange = { input = it },
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 120.dp),
-            placeholder = { Text("Введите сообщение…") },
-            enabled = !state.isLoading
-        )
+                OutlinedButton(onClick = vm::reset) { Text("Сбросить") }
+            }
 
-        Spacer(Modifier.height(8.dp))
-
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = {
-                    val text = input.trim()
-                    if (text.isNotEmpty()) {
-                        vm.ask(text); input = ""
-                    }
-                },
-                enabled = !state.isLoading && input.isNotBlank()
-            ) { Text("Отправить") }
-
-            OutlinedButton(onClick = vm::reset) { Text("Сбросить") }
+            Spacer(Modifier.height(8.dp))
         }
     }
 }
 
 @Composable
-private fun TokenPanel(
-    totalSpent: Int,
-    useCompression: Boolean,
-    summaryText: String?,
-    onToggle: () -> Unit
+private fun BranchBar(
+    currentBranchId: String,
+    branches: List<BranchInfo>,
+    onSwitch: (String) -> Unit,
+    onCreate: (String) -> Unit
 ) {
-    var summaryExpanded by remember { mutableStateOf(false) }
+    var menuExpanded by remember { mutableStateOf(false) }
+    var showDialog by remember { mutableStateOf(false) }
 
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box {
+            AssistChip(onClick = { menuExpanded = true }, label = { Text(currentBranchId) })
+            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                branches.forEach { branch ->
+                    DropdownMenuItem(
+                        text = { Text(branch.name) },
+                        onClick = { onSwitch(branch.id); menuExpanded = false }
+                    )
+                }
+            }
+        }
+        TextButton(onClick = { showDialog = true }) { Text("+ Ветка") }
+    }
+
+    if (showDialog) {
+        var name by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text("Новая ветка") },
+            text = {
+                OutlinedTextField(
+                    name,
+                    { name = it },
+                    placeholder = { Text("Имя ветки") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (name.isNotBlank()) {
+                            onCreate(name.trim()); showDialog = false
+                        }
+                    },
+                    enabled = name.isNotBlank()
+                ) { Text("Создать") }
+            },
+            dismissButton = { TextButton(onClick = { showDialog = false }) { Text("Отмена") } }
+        )
+    }
+}
+
+@Composable
+private fun FactsPanel(facts: String) {
+    var expanded by remember { mutableStateOf(false) }
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
+        color = MaterialTheme.colorScheme.tertiaryContainer,
         shape = MaterialTheme.shapes.small,
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
     ) {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    if (totalSpent > 0) {
-                        Text(
-                            "Потрачено токенов: $totalSpent",
-                            style = MaterialTheme.typography.labelSmall
-                        )
-                    }
-                    if (summaryText != null) {
-                        Text(
-                            text = if (summaryExpanded) "▼ Summary" else "▶ Summary",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.clickable { summaryExpanded = !summaryExpanded }
-                        )
-                    }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Сжатие", style = MaterialTheme.typography.labelSmall)
-                    Spacer(Modifier.width(4.dp))
-                    Switch(checked = useCompression, onCheckedChange = { onToggle() })
-                }
-            }
-
-            AnimatedVisibility(visible = summaryExpanded && summaryText != null) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+            Text(
+                if (expanded) "▼ Факты" else "▶ Факты",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                modifier = Modifier.clickable { expanded = !expanded }
+            )
+            AnimatedVisibility(expanded) {
                 Text(
-                    text = summaryText.orEmpty(),
+                    facts,
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(top = 4.dp)
                 )
@@ -185,7 +273,7 @@ private fun MessageBubble(item: MessageWithTokens) {
     val isUser = item.message.role == "user"
 
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        Modifier.fillMaxWidth(),
         horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
     ) {
         Surface(
@@ -205,15 +293,15 @@ private fun MessageBubble(item: MessageWithTokens) {
                 }
         ) {
             Text(
-                text = item.message.content,
-                modifier = Modifier.padding(12.dp),
+                item.message.content,
+                Modifier.padding(12.dp),
                 style = MaterialTheme.typography.bodyMedium
             )
         }
 
         if (!isUser && item.totalTokens > 0) {
             Text(
-                text = "контекст: ${item.promptTokens}  ·  ответ: ${item.completionTokens}  ·  итого: ${item.totalTokens}",
+                "контекст: ${item.promptTokens}  ·  ответ: ${item.completionTokens}  ·  итого: ${item.totalTokens}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 4.dp, top = 2.dp)
