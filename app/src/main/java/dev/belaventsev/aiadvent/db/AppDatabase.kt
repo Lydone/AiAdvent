@@ -8,18 +8,16 @@ import androidx.room.RoomDatabase
 @Database(
     entities = [
         ChatMessageEntity::class,
-        SummaryEntity::class,
-        FactsEntity::class,
-        BranchEntity::class
+        WorkingMemoryEntity::class,
+        LongTermMemoryEntity::class
     ],
     version = 1
 )
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun chatMessageDao(): ChatMessageDao
-    abstract fun summaryDao(): SummaryDao
-    abstract fun factsDao(): FactsDao
-    abstract fun branchDao(): BranchDao
+    abstract fun workingMemoryDao(): WorkingMemoryDao
+    abstract fun longTermMemoryDao(): LongTermMemoryDao
 
     companion object {
         @Volatile

@@ -17,24 +17,15 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -55,8 +46,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun ChatScreen(
     modifier: Modifier = Modifier,
-    vm: ChatViewModel = viewModel(),
-    onNavigateToSettings: () -> Unit
+    vm: ChatViewModel = viewModel()
 ) {
     val state by vm.uiState.collectAsState()
     var input by remember { mutableStateOf("") }
@@ -73,19 +63,7 @@ fun ChatScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        when (state.strategy) {
-                            is ContextStrategyType.SlidingWindow -> "Sliding Window"
-                            is ContextStrategyType.StickyFacts -> "Sticky Facts"
-                            is ContextStrategyType.Branching -> "Branching"
-                        },
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Настройки")
-                    }
+                    Text("Memory Layers", style = MaterialTheme.typography.titleMedium)
                 }
             )
         }
@@ -94,10 +72,6 @@ fun ChatScreen(
             .fillMaxSize()
             .padding(padding)
             .padding(horizontal = 16.dp)) {
-
-            if (state.strategy is ContextStrategyType.Branching) {
-                BranchBar(state.currentBranchId, state.branches, vm::switchBranch, vm::createBranch)
-            }
 
             LazyColumn(
                 state = listState,
@@ -109,9 +83,11 @@ fun ChatScreen(
                 items(state.messages) { MessageBubble(it) }
                 if (state.isLoading) {
                     item {
-                        Box(Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 16.dp), Alignment.Center) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 16.dp), Alignment.Center
+                        ) {
                             CircularProgressIndicator(strokeWidth = 2.dp)
                         }
                     }
@@ -126,8 +102,22 @@ fun ChatScreen(
                 )
             }
 
-            if (state.strategy is ContextStrategyType.StickyFacts && state.facts != null) {
-                FactsPanel(state.facts!!)
+            // Memory panels
+            state.workingMemory?.let {
+                MemoryPanel(
+                    title = "Рабочая память",
+                    content = it,
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+            state.longTermMemory?.let {
+                MemoryPanel(
+                    title = "Долговременная память",
+                    content = it,
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                )
             }
 
             if (state.totalSpent > 0) {
@@ -180,69 +170,15 @@ fun ChatScreen(
 }
 
 @Composable
-private fun BranchBar(
-    currentBranchId: String,
-    branches: List<BranchInfo>,
-    onSwitch: (String) -> Unit,
-    onCreate: (String) -> Unit
+private fun MemoryPanel(
+    title: String,
+    content: String,
+    containerColor: androidx.compose.ui.graphics.Color,
+    contentColor: androidx.compose.ui.graphics.Color
 ) {
-    var menuExpanded by remember { mutableStateOf(false) }
-    var showDialog by remember { mutableStateOf(false) }
-
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box {
-            AssistChip(onClick = { menuExpanded = true }, label = { Text(currentBranchId) })
-            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                branches.forEach { branch ->
-                    DropdownMenuItem(
-                        text = { Text(branch.name) },
-                        onClick = { onSwitch(branch.id); menuExpanded = false }
-                    )
-                }
-            }
-        }
-        TextButton(onClick = { showDialog = true }) { Text("+ Ветка") }
-    }
-
-    if (showDialog) {
-        var name by remember { mutableStateOf("") }
-        AlertDialog(
-            onDismissRequest = { showDialog = false },
-            title = { Text("Новая ветка") },
-            text = {
-                OutlinedTextField(
-                    name,
-                    { name = it },
-                    placeholder = { Text("Имя ветки") },
-                    singleLine = true
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        if (name.isNotBlank()) {
-                            onCreate(name.trim()); showDialog = false
-                        }
-                    },
-                    enabled = name.isNotBlank()
-                ) { Text("Создать") }
-            },
-            dismissButton = { TextButton(onClick = { showDialog = false }) { Text("Отмена") } }
-        )
-    }
-}
-
-@Composable
-private fun FactsPanel(facts: String) {
     var expanded by remember { mutableStateOf(false) }
     Surface(
-        color = MaterialTheme.colorScheme.tertiaryContainer,
+        color = containerColor,
         shape = MaterialTheme.shapes.small,
         modifier = Modifier
             .fillMaxWidth()
@@ -250,14 +186,14 @@ private fun FactsPanel(facts: String) {
     ) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
             Text(
-                if (expanded) "▼ Факты" else "▶ Факты",
+                if (expanded) "▼ $title" else "▶ $title",
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                color = contentColor,
                 modifier = Modifier.clickable { expanded = !expanded }
             )
             AnimatedVisibility(expanded) {
                 Text(
-                    facts,
+                    content,
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(top = 4.dp)
                 )
