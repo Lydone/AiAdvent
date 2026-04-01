@@ -9,15 +9,15 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface LongTermMemoryDao {
 
-    @Query("SELECT * FROM long_term_memory WHERE id = 0")
-    suspend fun get(): LongTermMemoryEntity?
+    @Query("SELECT * FROM long_term_memory WHERE userId = :userId")
+    suspend fun get(userId: String): LongTermMemoryEntity?
 
-    @Query("SELECT * FROM long_term_memory WHERE id = 0")
-    fun observe(): Flow<LongTermMemoryEntity?>
+    @Query("SELECT * FROM long_term_memory WHERE userId = :userId")
+    fun observe(userId: String): Flow<LongTermMemoryEntity?>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(memory: LongTermMemoryEntity)
 
-    @Query("DELETE FROM long_term_memory")
-    suspend fun deleteAll()
+    @Query("DELETE FROM long_term_memory WHERE userId = :userId")
+    suspend fun deleteAll(userId: String)
 }

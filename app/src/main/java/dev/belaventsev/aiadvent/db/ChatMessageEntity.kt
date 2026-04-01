@@ -9,6 +9,7 @@ import dev.belaventsev.aiadvent.Usage
 @Entity(tableName = "chat_messages")
 data class ChatMessageEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val userId: String,
     val role: String,
     val content: String,
     val timestamp: Long = System.currentTimeMillis(),
@@ -26,11 +27,12 @@ data class ChatMessageEntity(
     )
 
     companion object {
-        fun fromChatMessage(msg: ChatMessage) =
-            ChatMessageEntity(role = msg.role, content = msg.content)
+        fun fromChatMessage(userId: String, msg: ChatMessage) =
+            ChatMessageEntity(userId = userId, role = msg.role, content = msg.content)
 
-        fun fromAssistantResponse(content: String, usage: Usage?) =
+        fun fromAssistantResponse(userId: String, content: String, usage: Usage?) =
             ChatMessageEntity(
+                userId = userId,
                 role = "assistant",
                 content = content,
                 promptTokens = usage?.promptTokens ?: 0,

@@ -2,6 +2,7 @@ package dev.belaventsev.aiadvent
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dev.belaventsev.aiadvent.db.AppDatabase
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -12,11 +13,17 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-class ChatViewModel(application: Application) : AndroidViewModel(application) {
+class ChatViewModel(
+    application: Application,
+    savedStateHandle: SavedStateHandle
+) : AndroidViewModel(application) {
+
+    private val userId: String = checkNotNull(savedStateHandle["userId"])
 
     private val db = AppDatabase.getInstance(application)
 
     private val agent = Agent(
+        userId = userId,
         chatDao = db.chatMessageDao(),
         workingMemoryDao = db.workingMemoryDao(),
         longTermMemoryDao = db.longTermMemoryDao(),

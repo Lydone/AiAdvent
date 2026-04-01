@@ -9,7 +9,8 @@ import androidx.room.RoomDatabase
     entities = [
         ChatMessageEntity::class,
         WorkingMemoryEntity::class,
-        LongTermMemoryEntity::class
+        LongTermMemoryEntity::class,
+        UserProfileEntity::class
     ],
     version = 1
 )
@@ -18,6 +19,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun chatMessageDao(): ChatMessageDao
     abstract fun workingMemoryDao(): WorkingMemoryDao
     abstract fun longTermMemoryDao(): LongTermMemoryDao
+    abstract fun userProfileDao(): UserProfileDao
 
     companion object {
         @Volatile

@@ -9,15 +9,15 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface WorkingMemoryDao {
 
-    @Query("SELECT * FROM working_memory WHERE id = 0")
-    suspend fun get(): WorkingMemoryEntity?
+    @Query("SELECT * FROM working_memory WHERE userId = :userId")
+    suspend fun get(userId: String): WorkingMemoryEntity?
 
-    @Query("SELECT * FROM working_memory WHERE id = 0")
-    fun observe(): Flow<WorkingMemoryEntity?>
+    @Query("SELECT * FROM working_memory WHERE userId = :userId")
+    fun observe(userId: String): Flow<WorkingMemoryEntity?>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(memory: WorkingMemoryEntity)
 
-    @Query("DELETE FROM working_memory")
-    suspend fun deleteAll()
+    @Query("DELETE FROM working_memory WHERE userId = :userId")
+    suspend fun deleteAll(userId: String)
 }
