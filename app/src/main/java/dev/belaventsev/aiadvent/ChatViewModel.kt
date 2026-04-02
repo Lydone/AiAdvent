@@ -26,8 +26,7 @@ class ChatViewModel(
         userId = userId,
         chatDao = db.chatMessageDao(),
         workingMemoryDao = db.workingMemoryDao(),
-        longTermMemoryDao = db.longTermMemoryDao(),
-        systemPrompt = "Ты — дружелюбный ассистент. Отвечай кратко и по делу. Не используй markdown-разметку в ответах: без **, ##, ```, таблиц и списков с дефисами. Пиши простым текстом."
+        longTermMemoryDao = db.longTermMemoryDao()
     )
 
     private val vmState = MutableStateFlow(VmState())
@@ -43,7 +42,8 @@ class ChatViewModel(
             isLoading = vm.isLoading,
             error = vm.error,
             workingMemory = meta.workingMemory,
-            longTermMemory = meta.longTermMemory
+            longTermMemory = meta.longTermMemory,
+            taskPhase = meta.taskPhase
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ChatUiState())
 

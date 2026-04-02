@@ -6,6 +6,7 @@ import androidx.room.PrimaryKey
 @Entity(tableName = "working_memory")
 data class WorkingMemoryEntity(
     @PrimaryKey val userId: String,
+    val phase: String = "idle",
     val json: String,
     val lastProcessedMessageId: Long = 0
 )

@@ -41,6 +41,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -110,6 +111,11 @@ fun ChatScreen(
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(vertical = 4.dp)
                 )
+            }
+
+            // Task phase badge
+            if (state.taskPhase != "idle") {
+                TaskPhaseBadge(phase = state.taskPhase)
             }
 
             // Memory panels
@@ -183,8 +189,8 @@ fun ChatScreen(
 private fun MemoryPanel(
     title: String,
     content: String,
-    containerColor: androidx.compose.ui.graphics.Color,
-    contentColor: androidx.compose.ui.graphics.Color
+    containerColor: Color,
+    contentColor: Color
 ) {
     var expanded by remember { mutableStateOf(false) }
     Surface(
@@ -253,5 +259,30 @@ private fun MessageBubble(item: MessageWithTokens) {
                 modifier = Modifier.padding(start = 4.dp, top = 2.dp)
             )
         }
+    }
+}
+
+@Composable
+private fun TaskPhaseBadge(phase: String) {
+    val phaseColor = when (phase) {
+        "planning" -> Color(0xFFFFF3E0)    // light orange
+        "execution" -> Color(0xFFE3F2FD)   // light blue
+        "validation" -> Color(0xFFFCE4EC)  // light pink
+        "done" -> Color(0xFFE8F5E9)        // light green
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
+
+    Surface(
+        color = phaseColor,
+        shape = MaterialTheme.shapes.small,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+    ) {
+        Text(
+            "Фаза: $phase",
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+        )
     }
 }
