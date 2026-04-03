@@ -2,6 +2,7 @@ package dev.belaventsev.aiadvent
 
 import dev.belaventsev.aiadvent.db.ChatMessageDao
 import dev.belaventsev.aiadvent.db.ChatMessageEntity
+import dev.belaventsev.aiadvent.db.InvariantDao
 import dev.belaventsev.aiadvent.db.LongTermMemoryDao
 import dev.belaventsev.aiadvent.db.LongTermMemoryEntity
 import dev.belaventsev.aiadvent.db.WorkingMemoryDao
@@ -16,6 +17,7 @@ class Agent(
     private val chatDao: ChatMessageDao,
     private val workingMemoryDao: WorkingMemoryDao,
     private val longTermMemoryDao: LongTermMemoryDao,
+    private val invariantDao: InvariantDao,
     private val model: String = DEFAULT_MODEL,
     private val temperature: Double = 0.7,
     private val windowSize: Int = 6
@@ -31,6 +33,15 @@ class Agent(
         |3. Keep answers concise unless the user's profile says otherwise.
         |4. If the user returns after a pause, continue from where you left off.
         |   Do NOT repeat explanations already given.
+        |
+        |INVARIANTS:
+        |You may be given a list of invariants — hard constraints that MUST NOT be violated.
+        |If the user's request conflicts with any invariant:
+        |1. Do NOT fulfill the request.
+        |2. Clearly state which invariant would be violated and why.
+        |3. Suggest an alternative that respects the invariant.
+        |4. Ask a clarifying question to help the user reformulate the request.
+        |Never ignore, bend, or work around invariants, even if the user insists.
         |
         |BEHAVIOR BY TASK PHASE:
         |- planning: Clarify what the user needs. Ask short, specific questions. Do not start working yet.
@@ -69,45 +80,69 @@ class Agent(
         val apiMessages = assemblePrompt(history, invariants)
 
         // 3. Call LLM
-        val response = retrying {
+        var chatResponse = retrying {
             OpenRouterClient.service.chat(
                 auth = "Bearer ${BuildConfig.OPENROUTER_API_KEY}",
                 request = ChatRequest(model, apiMessages, temperature)
             )
         }
 
-        // 4. Validate and save assistant response
-        val validatedContent = validate(response.choices.first().message.content)
+        // 4. Validate against invariants; retry once if violated
+        var wasInvariantRefusal = false
+        if (invariants.isNotEmpty()) {
+            val violation =
+                checkInvariants(chatResponse.choices.first().message.content, invariants)
+            if (violation != null) {
+                wasInvariantRefusal = true
+                val correctedMessages = apiMessages + invariantViolationHint(violation)
+                chatResponse = retrying {
+                    OpenRouterClient.service.chat(
+                        auth = "Bearer ${BuildConfig.OPENROUTER_API_KEY}",
+                        request = ChatRequest(model, correctedMessages, temperature)
+                    )
+                }
+            }
+        }
+
+        // 5. Save assistant response
         chatDao.insert(
-            ChatMessageEntity.fromAssistantResponse(userId, validatedContent, response.usage)
+            ChatMessageEntity.fromAssistantResponse(
+                userId, chatResponse.choices.first().message.content, chatResponse.usage
+            )
         )
 
-        // 5. Extract working memory (analyzes FULL exchange: user message + assistant response)
+        // 6. Extract working memory (analyzes FULL exchange: user message + assistant response)
         val fullHistory = chatDao.getAll(userId)
         val current = workingMemoryDao.get(userId)
         val previousPhase = TaskPhase.fromString(current?.phase ?: "idle")
-        val extracted = extractWorkingMemory(fullHistory, current)
+        val extracted =
+            extractWorkingMemory(fullHistory, current, wasInvariantRefusal = wasInvariantRefusal)
 
-        // 6. Validate task state transition; retry once if invalid, then advance one step
+        // 7. Validate task state transition; retry once if invalid, then advance one step
         val validatedMemory = if (isValidTransition(previousPhase, extracted)) {
             extracted
         } else {
             val retried = extractWorkingMemory(
-                fullHistory, current, invalidTransitionHint(previousPhase, extracted)
+                fullHistory, current, invalidTransitionHint(previousPhase, extracted),
+                wasInvariantRefusal = wasInvariantRefusal
             )
             if (isValidTransition(previousPhase, retried)) {
                 retried
             } else {
                 // Can't jump multiple phases — advance one step toward the target
                 val nextPhase = advanceOneStep(previousPhase, TaskPhase.fromString(extracted.phase))
-                extracted.copy(phase = nextPhase.label)
+                val fixedJson = extracted.json.replaceFirst(
+                    extracted.json.lines().first(),
+                    nextPhase.label
+                )
+                extracted.copy(phase = nextPhase.label, json = fixedJson)
             }
         }
 
-        // 7. Save working memory
+        // 8. Save working memory
         workingMemoryDao.upsert(validatedMemory)
 
-        // 8. Extract and save long-term memory
+        // 9. Extract and save long-term memory
         updateLongTermMemory(fullHistory)
     }
 
@@ -125,7 +160,8 @@ class Agent(
     private suspend fun extractWorkingMemory(
         history: List<ChatMessageEntity>,
         current: WorkingMemoryEntity?,
-        hint: String? = null
+        hint: String? = null,
+        wasInvariantRefusal: Boolean = false
     ): WorkingMemoryEntity {
         val lastProcessedId = current?.lastProcessedMessageId ?: 0
         val unprocessed = history.filter { it.id > lastProcessedId }
@@ -133,6 +169,11 @@ class Agent(
         val prompt = buildString {
             append("You are a task state analyzer.\n\n")
             append("PHASES (use ONLY one of these words): idle, planning, execution, validation, done\n\n")
+            if (wasInvariantRefusal) {
+                append("NOTE: In the latest exchange, the assistant REFUSED the user's request ")
+                append("because it violated a hard constraint (invariant). ")
+                append("This refusal does NOT change the task phase — keep the previous phase as is.\n\n")
+            }
             if (current != null) {
                 append("Previous state (phase: ${current.phase}):\n${current.json}\n\n")
             }
@@ -224,7 +265,8 @@ class Agent(
         )
     }
 
-    private fun collectInvariants(): List<String> = emptyList()
+    private suspend fun collectInvariants(): List<String> =
+        invariantDao.getAll(userId).map { it.text }
 
     private suspend fun assemblePrompt(
         history: List<ChatMessageEntity>,
@@ -272,13 +314,60 @@ class Agent(
                 )
             }
             if (invariants.isNotEmpty()) {
-                add(ChatMessage("system", "Invariants:\n${invariants.joinToString("\n")}"))
+                val numbered = invariants.mapIndexed { i, text -> "${i + 1}. $text" }
+                add(
+                    ChatMessage(
+                        "system",
+                        "ACTIVE INVARIANTS (hard constraints — never violate):\n" +
+                                numbered.joinToString("\n") +
+                                "\n\nIf the user's request conflicts with any of the above, " +
+                                "refuse and explain which invariant (by number) would be violated."
+                    )
+                )
             }
             addAll(recent.map { it.toChatMessage() })
         }
     }
 
-    private fun validate(response: String): String = response
+    /**
+     * Check if assistant response violates any invariant.
+     * Returns violation description or null if OK.
+     */
+    private suspend fun checkInvariants(
+        response: String,
+        invariants: List<String>
+    ): String? {
+        val numbered = invariants.mapIndexed { i, text -> "${i + 1}. $text" }
+        val prompt = buildString {
+            append("You are an invariant compliance checker.\n\n")
+            append("INVARIANTS:\n${numbered.joinToString("\n")}\n\n")
+            append("ASSISTANT RESPONSE:\n$response\n\n")
+            append("IMPORTANT: Invariants apply ONLY to technical recommendations, solutions, ")
+            append("and suggestions the assistant makes. They do NOT apply to:\n")
+            append("- The natural language the assistant uses to communicate\n")
+            append("- Greetings, clarifying questions, or general conversation\n")
+            append("- Responses that don't contain any technical recommendation\n\n")
+            append("Does the response RECOMMEND or PROPOSE something that violates an invariant?\n")
+            append("Answer EXACTLY in this format:\n")
+            append("First line: OK or VIOLATION\n")
+            append("If VIOLATION — next line: which invariant number and a brief explanation.\n")
+            append("Nothing else.")
+        }
+
+        val verdict = callLlm(listOf(ChatMessage("user", prompt)))
+        val firstLine = verdict.lines().firstOrNull()?.trim()?.uppercase() ?: "OK"
+
+        return if (firstLine.startsWith("VIOLATION")) {
+            verdict.lines().drop(1).joinToString(" ").trim()
+        } else null
+    }
+
+    private fun invariantViolationHint(violationDetail: String) = ChatMessage(
+        "system",
+        "YOUR PREVIOUS RESPONSE VIOLATED AN INVARIANT: $violationDetail\n" +
+                "Regenerate your answer. If the user's request fundamentally conflicts " +
+                "with the invariant, refuse politely and explain which invariant is violated."
+    )
 
     // --- Helpers ---
 

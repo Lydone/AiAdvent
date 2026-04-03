@@ -26,7 +26,8 @@ class ChatViewModel(
         userId = userId,
         chatDao = db.chatMessageDao(),
         workingMemoryDao = db.workingMemoryDao(),
-        longTermMemoryDao = db.longTermMemoryDao()
+        longTermMemoryDao = db.longTermMemoryDao(),
+        invariantDao = db.invariantDao()
     )
 
     private val vmState = MutableStateFlow(VmState())

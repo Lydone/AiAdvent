@@ -37,8 +37,26 @@ class MainActivity : ComponentActivity() {
                     composable(
                         route = "chat/{userId}",
                         arguments = listOf(navArgument("userId") { type = NavType.StringType })
-                    ) {
-                        ChatScreen(onBack = { navController.popBackStack() })
+                    ) { backStackEntry ->
+                        val userId =
+                            backStackEntry.arguments?.getString("userId") ?: return@composable
+                        ChatScreen(
+                            onBack = { navController.popBackStack() },
+                            onInvariants = { navController.navigate("invariants/$userId") }
+                        )
+                    }
+
+                    composable(
+                        route = "invariants/{userId}",
+                        arguments = listOf(navArgument("userId") { type = NavType.StringType })
+                    ) { backStackEntry ->
+                        val userId =
+                            backStackEntry.arguments?.getString("userId") ?: return@composable
+                        InvariantsScreen(
+                            db = db,
+                            userId = userId,
+                            onBack = { navController.popBackStack() }
+                        )
                     }
                 }
             }

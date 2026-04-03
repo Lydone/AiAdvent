@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -51,6 +52,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun ChatScreen(
     onBack: () -> Unit = {},
+    onInvariants: () -> Unit = {},
     modifier: Modifier = Modifier,
     vm: ChatViewModel = viewModel()
 ) {
@@ -74,6 +76,11 @@ fun ChatScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = onInvariants) {
+                        Icon(Icons.Default.Lock, contentDescription = "Инварианты")
                     }
                 }
             )
