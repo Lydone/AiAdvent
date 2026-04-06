@@ -73,4 +73,9 @@ dependencies {
     implementation(libs.datastore)
     implementation(libs.navigation.compose)
     ksp(libs.room.compiler)
+    implementation(libs.kotlin.sdk.client)
+    implementation(libs.ktor.client.cio)
+    implementation(libs.ktor.client.content.negotiation)
+    implementation(libs.ktor.serialization.kotlinx.json)
+    implementation(libs.ktor.client.logging)
 }

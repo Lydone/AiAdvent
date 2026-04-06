@@ -43,9 +43,7 @@ class ChatViewModel(
             isLoading = vm.isLoading,
             error = vm.error,
             workingMemory = meta.workingMemory,
-            longTermMemory = meta.longTermMemory,
-            taskPhase = meta.taskPhase,
-            transitionBlocked = meta.transitionBlocked
+            longTermMemory = meta.longTermMemory
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ChatUiState())
 

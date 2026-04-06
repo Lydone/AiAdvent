@@ -42,7 +42,8 @@ class MainActivity : ComponentActivity() {
                             backStackEntry.arguments?.getString("userId") ?: return@composable
                         ChatScreen(
                             onBack = { navController.popBackStack() },
-                            onInvariants = { navController.navigate("invariants/$userId") }
+                            onInvariants = { navController.navigate("invariants/$userId") },
+                            onMcpTools = { navController.navigate("mcp-tools") }
                         )
                     }
 
@@ -55,6 +56,12 @@ class MainActivity : ComponentActivity() {
                         InvariantsScreen(
                             db = db,
                             userId = userId,
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+
+                    composable("mcp-tools") {
+                        McpToolsScreen(
                             onBack = { navController.popBackStack() }
                         )
                     }

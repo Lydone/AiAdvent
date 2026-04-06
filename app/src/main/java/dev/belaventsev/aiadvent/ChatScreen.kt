@@ -17,9 +17,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -44,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
@@ -53,6 +51,7 @@ import kotlinx.coroutines.launch
 fun ChatScreen(
     onBack: () -> Unit = {},
     onInvariants: () -> Unit = {},
+    onMcpTools: () -> Unit = {},
     modifier: Modifier = Modifier,
     vm: ChatViewModel = viewModel()
 ) {
@@ -75,12 +74,18 @@ fun ChatScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
+                        Icon(
+                            painterResource(R.drawable.ic_arrow_back),
+                            contentDescription = "Назад"
+                        )
                     }
                 },
                 actions = {
+                    IconButton(onClick = onMcpTools) {
+                        Icon(painterResource(R.drawable.ic_build), contentDescription = "MCP Tools")
+                    }
                     IconButton(onClick = onInvariants) {
-                        Icon(Icons.Default.Lock, contentDescription = "Инварианты")
+                        Icon(painterResource(R.drawable.ic_lock), contentDescription = "Инварианты")
                     }
                 }
             )
@@ -117,14 +122,6 @@ fun ChatScreen(
                     it,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(vertical = 4.dp)
-                )
-            }
-
-            // Task phase badge with optional blocked transition warning
-            if (state.taskPhase != "idle" || state.transitionBlocked != null) {
-                TaskPhaseBadge(
-                    phase = state.taskPhase,
-                    blocked = state.transitionBlocked
                 )
             }
 
@@ -268,40 +265,6 @@ private fun MessageBubble(item: MessageWithTokens) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 4.dp, top = 2.dp)
             )
-        }
-    }
-}
-
-@Composable
-private fun TaskPhaseBadge(phase: String, blocked: String? = null) {
-    val phaseColor = when (phase) {
-        "planning" -> Color(0xFFFFF3E0)    // light orange
-        "execution" -> Color(0xFFE3F2FD)   // light blue
-        "validation" -> Color(0xFFFCE4EC)  // light pink
-        "done" -> Color(0xFFE8F5E9)        // light green
-        else -> MaterialTheme.colorScheme.surfaceVariant
-    }
-
-    Surface(
-        color = phaseColor,
-        shape = MaterialTheme.shapes.small,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-    ) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-            Text(
-                "Фаза: $phase",
-                style = MaterialTheme.typography.labelMedium
-            )
-            if (blocked != null) {
-                Text(
-                    "Переход $blocked заблокирован",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-            }
         }
     }
 }
