@@ -44,7 +44,8 @@ class ChatViewModel(
             error = vm.error,
             workingMemory = meta.workingMemory,
             longTermMemory = meta.longTermMemory,
-            taskPhase = meta.taskPhase
+            taskPhase = meta.taskPhase,
+            transitionBlocked = meta.transitionBlocked
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ChatUiState())
 

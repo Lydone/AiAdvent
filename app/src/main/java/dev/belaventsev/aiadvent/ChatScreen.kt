@@ -120,9 +120,12 @@ fun ChatScreen(
                 )
             }
 
-            // Task phase badge
-            if (state.taskPhase != "idle") {
-                TaskPhaseBadge(phase = state.taskPhase)
+            // Task phase badge with optional blocked transition warning
+            if (state.taskPhase != "idle" || state.transitionBlocked != null) {
+                TaskPhaseBadge(
+                    phase = state.taskPhase,
+                    blocked = state.transitionBlocked
+                )
             }
 
             // Memory panels
@@ -270,7 +273,7 @@ private fun MessageBubble(item: MessageWithTokens) {
 }
 
 @Composable
-private fun TaskPhaseBadge(phase: String) {
+private fun TaskPhaseBadge(phase: String, blocked: String? = null) {
     val phaseColor = when (phase) {
         "planning" -> Color(0xFFFFF3E0)    // light orange
         "execution" -> Color(0xFFE3F2FD)   // light blue
@@ -286,10 +289,19 @@ private fun TaskPhaseBadge(phase: String) {
             .fillMaxWidth()
             .padding(vertical = 4.dp)
     ) {
-        Text(
-            "Фаза: $phase",
-            style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-        )
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Text(
+                "Фаза: $phase",
+                style = MaterialTheme.typography.labelMedium
+            )
+            if (blocked != null) {
+                Text(
+                    "Переход $blocked заблокирован",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+        }
     }
 }

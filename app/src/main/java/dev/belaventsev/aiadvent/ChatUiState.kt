@@ -7,5 +7,6 @@ data class ChatUiState(
     val error: String? = null,
     val workingMemory: String? = null,
     val longTermMemory: String? = null,
-    val taskPhase: String = "idle"
+    val taskPhase: String = "idle",
+    val transitionBlocked: String? = null
 )
