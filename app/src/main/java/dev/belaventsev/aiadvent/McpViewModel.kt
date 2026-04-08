@@ -2,11 +2,6 @@ package dev.belaventsev.aiadvent
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import io.ktor.client.HttpClient
-import io.ktor.client.plugins.sse.SSE
-import io.modelcontextprotocol.kotlin.sdk.client.Client
-import io.modelcontextprotocol.kotlin.sdk.client.StreamableHttpClientTransport
-import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,11 +13,13 @@ class McpViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(McpUiState())
     val uiState: StateFlow<McpUiState> = _uiState.asStateFlow()
 
+    private val mcpClient = McpClientWrapper()
+
     fun connect() {
-        _uiState.update { it.copy(isLoading = true, error = null) }
+        _uiState.update { it.copy(isLoading = true, error = null, callResult = null) }
         viewModelScope.launch {
             try {
-                val tools = fetchTools(_uiState.value.serverUrl)
+                val tools = mcpClient.listTools()
                 _uiState.update {
                     it.copy(isLoading = false, isConnected = true, tools = tools)
                 }
@@ -38,31 +35,19 @@ class McpViewModel : ViewModel() {
         }
     }
 
-    private suspend fun fetchTools(serverUrl: String): List<io.modelcontextprotocol.kotlin.sdk.types.Tool> {
-        val httpClient = HttpClient {
-            install(SSE)
-        }
-
-        val client = Client(
-            clientInfo = Implementation(
-                name = "aiadvent-android",
-                version = "1.0.0"
-            )
-        )
-
-        return try {
-            val transport = StreamableHttpClientTransport(
-                client = httpClient,
-                url = serverUrl
-            )
-            client.connect(transport)
-            client.listTools().tools
-        } finally {
+    fun callTool(toolName: String, arguments: Map<String, String>) {
+        _uiState.update { it.copy(isLoading = true, error = null, callResult = null) }
+        viewModelScope.launch {
             try {
-                client.close()
-            } catch (_: Exception) {
+                val result = mcpClient.callTool(toolName, arguments)
+                _uiState.update {
+                    it.copy(isLoading = false, callResult = result)
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(isLoading = false, error = e.message ?: "Ошибка вызова")
+                }
             }
-            httpClient.close()
         }
     }
 }

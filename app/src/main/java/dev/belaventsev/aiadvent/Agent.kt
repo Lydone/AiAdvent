@@ -7,10 +7,10 @@ import dev.belaventsev.aiadvent.db.LongTermMemoryDao
 import dev.belaventsev.aiadvent.db.LongTermMemoryEntity
 import dev.belaventsev.aiadvent.db.WorkingMemoryDao
 import dev.belaventsev.aiadvent.db.WorkingMemoryEntity
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.json.Json
 
 class Agent(
     private val userId: String,
@@ -18,8 +18,8 @@ class Agent(
     private val workingMemoryDao: WorkingMemoryDao,
     private val longTermMemoryDao: LongTermMemoryDao,
     private val invariantDao: InvariantDao,
-    private val model: String = DEFAULT_MODEL,
-    private val temperature: Double = 0.7,
+    private val llm: LlmClient = LlmClient(),
+    private val mcpClient: McpClientWrapper? = null,
     private val windowSize: Int = 6
 ) {
 
@@ -71,46 +71,85 @@ class Agent(
         val apiMessages = assemblePrompt(history, invariants)
 
         // 3. Call LLM
-        var chatResponse = retrying {
-            OpenRouterClient.service.chat(
-                auth = "Bearer ${BuildConfig.OPENROUTER_API_KEY}",
-                request = ChatRequest(model, apiMessages, temperature)
-            )
-        }
+        var response = llm.chat(apiMessages)
 
         // 4. Validate against invariants; retry once if violated
         if (invariants.isNotEmpty()) {
-            val violation =
-                checkInvariants(chatResponse.choices.first().message.content, invariants)
+            val violation = checkInvariants(response.content, invariants)
             if (violation != null) {
                 val correctedMessages = apiMessages + invariantViolationHint(violation)
-                chatResponse = retrying {
-                    OpenRouterClient.service.chat(
-                        auth = "Bearer ${BuildConfig.OPENROUTER_API_KEY}",
-                        request = ChatRequest(model, correctedMessages, temperature)
-                    )
-                }
+                response = llm.chat(correctedMessages)
             }
         }
 
-        // 5. Save assistant response
+        var assistantContent = response.content
+
+        // 5. Handle MCP tool calls
+        val toolCall = parseToolCall(assistantContent)
+        if (toolCall != null && mcpClient != null) {
+            val toolResult = try {
+                mcpClient.callTool(toolCall.toolName, toolCall.arguments)
+            } catch (e: Exception) {
+                "Ошибка вызова инструмента: ${e.message}"
+            }
+
+            val followUp = apiMessages +
+                    ChatMessage("assistant", assistantContent) +
+                    ChatMessage(
+                        "system",
+                        "Tool '${toolCall.toolName}' returned:\n$toolResult\n\n" +
+                                "Now respond to the user using this data. " +
+                                "Do NOT include [TOOL_CALL] in your response. " +
+                                "Formulate a natural answer in the user's language."
+                    )
+
+            val finalResponse = llm.chat(followUp)
+            assistantContent = finalResponse.content
+        }
+
+        // 6. Save assistant response
         chatDao.insert(
-            ChatMessageEntity.fromAssistantResponse(
-                userId, chatResponse.choices.first().message.content, chatResponse.usage
-            )
+            ChatMessageEntity.fromAssistantResponse(userId, assistantContent, response.usage)
         )
 
-        // 6. Extract and save working memory
+        // 7. Update working memory
         val fullHistory = chatDao.getAll(userId)
         updateWorkingMemory(fullHistory)
 
-        // 7. Extract and save long-term memory
+        // 8. Update long-term memory
         updateLongTermMemory(fullHistory)
     }
 
     suspend fun reset() {
         workingMemoryDao.deleteAll(userId)
         chatDao.deleteAll(userId)
+    }
+
+    // --- Tool call parsing ---
+
+    private data class ToolCallRequest(
+        val toolName: String,
+        val arguments: Map<String, String>
+    )
+
+    private fun parseToolCall(response: String): ToolCallRequest? {
+        val line = response.lines().firstOrNull { it.trimStart().startsWith("[TOOL_CALL]") }
+            ?: return null
+
+        val afterTag = line.substringAfter("[TOOL_CALL]").trim()
+        val toolName = afterTag.substringBefore(" ").substringBefore("{").trim()
+        if (toolName.isBlank()) return null
+
+        val jsonStart = afterTag.indexOf("{")
+        if (jsonStart < 0) return ToolCallRequest(toolName, emptyMap())
+
+        val jsonStr = afterTag.substring(jsonStart)
+        return try {
+            val map = Json.decodeFromString<Map<String, String>>(jsonStr)
+            ToolCallRequest(toolName, map)
+        } catch (_: Exception) {
+            ToolCallRequest(toolName, emptyMap())
+        }
     }
 
     // --- Pipeline stages ---
@@ -135,7 +174,7 @@ class Agent(
             append("Output ONLY the state summary in the user's language. No explanations.")
         }
 
-        val result = callLlm(listOf(ChatMessage("user", prompt)))
+        val result = llm.ask(listOf(ChatMessage("user", prompt)))
         workingMemoryDao.upsert(
             WorkingMemoryEntity(
                 userId = userId,
@@ -175,7 +214,7 @@ class Agent(
             }
             append("New messages:\n")
             unprocessed.forEach { append("- ${it.content}\n") }
-            append("\nUpdate the profile: add new identity facts, modify changed ones (e.g. moved to a new city). ")
+            append("\nUpdate the profile: add new identity facts, modify changed ones. ")
             append("Remove ANYTHING that is a task, request, or temporary plan. ")
             append("Keep the user's language for values. ")
             append("Output ONLY the updated profile in format:\n")
@@ -183,7 +222,7 @@ class Agent(
             append("No explanations, no markdown — only key-value pairs.")
         }
 
-        val result = callLlm(listOf(ChatMessage("user", prompt)))
+        val result = llm.ask(listOf(ChatMessage("user", prompt)))
         longTermMemoryDao.upsert(
             LongTermMemoryEntity(
                 userId = userId,
@@ -203,6 +242,12 @@ class Agent(
         val longTerm = longTermMemoryDao.get(userId)
         val working = workingMemoryDao.get(userId)
         val recent = history.takeLast(windowSize)
+
+        val toolsSection = try {
+            mcpClient?.toolDescriptions() ?: ""
+        } catch (_: Exception) {
+            ""
+        }
 
         return buildList {
             add(ChatMessage("system", systemPrompt))
@@ -228,6 +273,9 @@ class Agent(
                     )
                 )
             }
+            if (toolsSection.isNotBlank()) {
+                add(ChatMessage("system", toolsSection))
+            }
             if (invariants.isNotEmpty()) {
                 val numbered = invariants.mapIndexed { i, text -> "${i + 1}. $text" }
                 add(
@@ -244,10 +292,7 @@ class Agent(
         }
     }
 
-    private suspend fun checkInvariants(
-        response: String,
-        invariants: List<String>
-    ): String? {
+    private suspend fun checkInvariants(response: String, invariants: List<String>): String? {
         val numbered = invariants.mapIndexed { i, text -> "${i + 1}. $text" }
         val prompt = buildString {
             append("You are an invariant compliance checker.\n\n")
@@ -265,7 +310,7 @@ class Agent(
             append("Nothing else.")
         }
 
-        val verdict = callLlm(listOf(ChatMessage("user", prompt)))
+        val verdict = llm.ask(listOf(ChatMessage("user", prompt)))
         val firstLine = verdict.lines().firstOrNull()?.trim()?.uppercase() ?: "OK"
 
         return if (firstLine.startsWith("VIOLATION")) {
@@ -280,32 +325,7 @@ class Agent(
                 "with the invariant, refuse politely and explain which invariant is violated."
     )
 
-    // --- Infrastructure ---
-
-    private suspend fun callLlm(messages: List<ChatMessage>): String =
-        retrying {
-            OpenRouterClient.service.chat(
-                auth = "Bearer ${BuildConfig.OPENROUTER_API_KEY}",
-                request = ChatRequest(model, messages, 0.3)
-            )
-        }.choices.first().message.content
-
-    private suspend fun <T> retrying(block: suspend () -> T): T {
-        var lastException: Exception? = null
-        repeat(MAX_RETRIES) { attempt ->
-            try {
-                return block()
-            } catch (e: Exception) {
-                lastException = e
-                if (attempt < MAX_RETRIES - 1) delay(RETRY_DELAY_MS * (attempt + 1))
-            }
-        }
-        throw lastException!!
-    }
-
     companion object {
-        const val MAX_RETRIES = 3
-        const val RETRY_DELAY_MS = 1000L
         const val DEFAULT_MODEL = "nvidia/nemotron-3-nano-30b-a3b:free"
 
         val MODELS = listOf(

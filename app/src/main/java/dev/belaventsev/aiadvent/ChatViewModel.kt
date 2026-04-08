@@ -22,12 +22,15 @@ class ChatViewModel(
 
     private val db = AppDatabase.getInstance(application)
 
+    private val mcpClient = McpClientWrapper()
+
     private val agent = Agent(
         userId = userId,
         chatDao = db.chatMessageDao(),
         workingMemoryDao = db.workingMemoryDao(),
         longTermMemoryDao = db.longTermMemoryDao(),
-        invariantDao = db.invariantDao()
+        invariantDao = db.invariantDao(),
+        mcpClient = mcpClient
     )
 
     private val vmState = MutableStateFlow(VmState())

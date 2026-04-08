@@ -16,6 +16,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -23,6 +25,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -61,32 +67,71 @@ fun McpToolsScreen(
         ) {
             ServerInfo(state.serverUrl)
 
-            ConnectButton(
-                isLoading = state.isLoading,
-                isConnected = state.isConnected,
-                onClick = vm::connect
-            )
+            Button(
+                onClick = vm::connect,
+                enabled = !state.isLoading,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (state.isConnected) "Переподключиться" else "Подключиться")
+            }
 
             Spacer(Modifier.height(8.dp))
 
             if (state.isLoading) {
-                LoadingIndicator()
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(strokeWidth = 2.dp)
+                }
             }
 
-            state.error?.let { ErrorMessage(it) }
+            state.error?.let {
+                Text(
+                    it,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
+            state.callResult?.let { result ->
+                Surface(
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp)
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text("Результат:", style = MaterialTheme.typography.titleSmall)
+                        Spacer(Modifier.height(4.dp))
+                        Text(result, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
 
             if (state.isConnected && state.tools.isNotEmpty()) {
                 Text(
-                    "Найдено инструментов: ${state.tools.size}",
+                    "Инструменты: ${state.tools.size}",
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
             }
 
-            ToolsList(
-                tools = state.tools,
-                modifier = Modifier.weight(1f)
-            )
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(state.tools) { tool ->
+                    ToolCard(
+                        tool = tool,
+                        isLoading = state.isLoading,
+                        onCall = { args -> vm.callTool(tool.name, args) }
+                    )
+                }
+            }
 
             Spacer(Modifier.height(16.dp))
         }
@@ -111,54 +156,15 @@ private fun ServerInfo(url: String) {
 }
 
 @Composable
-private fun ConnectButton(
+private fun ToolCard(
+    tool: Tool,
     isLoading: Boolean,
-    isConnected: Boolean,
-    onClick: () -> Unit
+    onCall: (Map<String, String>) -> Unit
 ) {
-    Button(
-        onClick = onClick,
-        enabled = !isLoading,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(if (isConnected) "Переподключиться" else "Подключиться")
-    }
-}
+    val paramNames = tool.inputSchema.properties?.keys?.toList() ?: emptyList()
+    val paramValues = remember(tool.name) { mutableStateMapOf<String, String>() }
+    var expanded by remember(tool.name) { mutableStateOf(false) }
 
-@Composable
-private fun LoadingIndicator() {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .padding(vertical = 16.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        CircularProgressIndicator(strokeWidth = 2.dp)
-    }
-}
-
-@Composable
-private fun ErrorMessage(message: String) {
-    Text(
-        message,
-        color = MaterialTheme.colorScheme.error,
-        style = MaterialTheme.typography.bodySmall,
-        modifier = Modifier.padding(vertical = 4.dp)
-    )
-}
-
-@Composable
-private fun ToolsList(tools: List<Tool>, modifier: Modifier = Modifier) {
-    LazyColumn(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(tools) { tool -> ToolCard(tool) }
-    }
-}
-
-@Composable
-private fun ToolCard(tool: Tool) {
     Surface(
         color = MaterialTheme.colorScheme.secondaryContainer,
         shape = MaterialTheme.shapes.medium,
@@ -178,19 +184,30 @@ private fun ToolCard(tool: Tool) {
                     color = MaterialTheme.colorScheme.onSecondaryContainer
                 )
             }
-            tool.inputSchema.properties?.let { props ->
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Параметры:",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                )
-                props.entries.forEach { (name, schema) ->
-                    Text(
-                        "  $name: $schema",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
+
+            Spacer(Modifier.height(8.dp))
+
+            if (!expanded) {
+                OutlinedButton(onClick = { expanded = true }) {
+                    Text("Вызвать")
+                }
+            } else {
+                paramNames.forEach { param ->
+                    OutlinedTextField(
+                        value = paramValues[param] ?: "",
+                        onValueChange = { paramValues[param] = it },
+                        label = { Text(param) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
                     )
+                    Spacer(Modifier.height(4.dp))
+                }
+
+                Button(
+                    onClick = { onCall(paramValues.toMap()) },
+                    enabled = !isLoading
+                ) {
+                    Text("Выполнить")
                 }
             }
         }
