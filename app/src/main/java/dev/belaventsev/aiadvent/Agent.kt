@@ -85,27 +85,46 @@ class Agent(
 
         var assistantContent = response.content
 
-        // 5. Handle MCP tool calls
-        val toolCall = parseToolCall(assistantContent)
-        if (toolCall != null && mcpClient != null) {
+// 5. Handle MCP tool calls — loop for pipeline
+        var iteration = 0
+        val maxIterations = 5
+
+        while (iteration < maxIterations && mcpClient != null) {
+            val toolCall = parseToolCall(assistantContent) ?: break
+            iteration++
+
+            // Save intermediate step
+            chatDao.insert(
+                ChatMessageEntity.toolStep(
+                    userId,
+                    "Вызов: ${toolCall.toolName}(${toolCall.arguments})"
+                )
+            )
+
             val toolResult = try {
                 mcpClient.callTool(toolCall.toolName, toolCall.arguments)
             } catch (e: Exception) {
                 "Ошибка вызова инструмента: ${e.message}"
             }
 
-            val followUp = apiMessages +
-                    ChatMessage("assistant", assistantContent) +
+            // Save tool result
+            chatDao.insert(
+                ChatMessageEntity.toolStep(userId, "Результат ${toolCall.toolName}:\n$toolResult")
+            )
+
+            // Ask LLM what to do next
+            val currentHistory = chatDao.getAll(userId)
+            val nextMessages = assemblePrompt(currentHistory, invariants) +
                     ChatMessage(
                         "system",
                         "Tool '${toolCall.toolName}' returned:\n$toolResult\n\n" +
-                                "Now respond to the user using this data. " +
-                                "Do NOT include [TOOL_CALL] in your response. " +
-                                "Formulate a natural answer in the user's language."
+                                "If you need to call another tool in the pipeline, respond with [TOOL_CALL]. " +
+                                "If all steps are done, respond naturally to the user. " +
+                                "Do NOT repeat tool results verbatim — summarize them."
                     )
 
-            val finalResponse = llm.chat(followUp)
-            assistantContent = finalResponse.content
+            val nextResponse = llm.chat(nextMessages)
+            assistantContent = nextResponse.content
         }
 
         // 6. Save assistant response
@@ -348,5 +367,6 @@ data class MessageWithTokens(
     val message: ChatMessage,
     val promptTokens: Int = 0,
     val completionTokens: Int = 0,
-    val totalTokens: Int = 0
+    val totalTokens: Int = 0,
+    val isToolStep: Boolean = false
 )

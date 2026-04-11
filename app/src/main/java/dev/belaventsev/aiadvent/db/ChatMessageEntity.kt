@@ -15,7 +15,8 @@ data class ChatMessageEntity(
     val timestamp: Long = System.currentTimeMillis(),
     val promptTokens: Int = 0,
     val completionTokens: Int = 0,
-    val totalTokens: Int = 0
+    val totalTokens: Int = 0,
+    val isToolStep: Boolean = false
 ) {
     fun toChatMessage() = ChatMessage(role, content)
 
@@ -23,7 +24,8 @@ data class ChatMessageEntity(
         message = toChatMessage(),
         promptTokens = promptTokens,
         completionTokens = completionTokens,
-        totalTokens = totalTokens
+        totalTokens = totalTokens,
+        isToolStep = isToolStep
     )
 
     companion object {
@@ -39,5 +41,8 @@ data class ChatMessageEntity(
                 completionTokens = usage?.completionTokens ?: 0,
                 totalTokens = usage?.totalTokens ?: 0
             )
+
+        fun toolStep(userId: String, content: String) =
+            ChatMessageEntity(userId = userId, role = "tool", content = content, isToolStep = true)
     }
 }

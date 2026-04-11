@@ -103,7 +103,13 @@ fun ChatScreen(
                     .fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(state.messages) { MessageBubble(it) }
+                items(state.messages) { item ->
+                    if (item.isToolStep) {
+                        ToolStepBubble(item)
+                    } else {
+                        MessageBubble(item)
+                    }
+                }
                 if (state.isLoading) {
                     item {
                         Box(
@@ -265,6 +271,37 @@ private fun MessageBubble(item: MessageWithTokens) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 4.dp, top = 2.dp)
             )
+        }
+    }
+}
+
+@Composable
+private fun ToolStepBubble(item: MessageWithTokens) {
+    var expanded by remember { mutableStateOf(false) }
+    val content = item.message.content
+    val firstLine = content.lines().first()
+
+    Surface(
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        shape = MaterialTheme.shapes.small,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp)
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+            Text(
+                text = if (expanded) "▼ $firstLine" else "▶ $firstLine",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                modifier = Modifier.clickable { expanded = !expanded }
+            )
+            AnimatedVisibility(expanded) {
+                Text(
+                    content,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
         }
     }
 }
