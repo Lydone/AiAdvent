@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonPrimitive
 
 class Agent(
     private val userId: String,
@@ -145,7 +146,9 @@ class Agent(
 
         val jsonStr = afterTag.substring(jsonStart)
         return try {
-            val map = Json.decodeFromString<Map<String, String>>(jsonStr)
+            val jsonMap =
+                Json.decodeFromString<Map<String, kotlinx.serialization.json.JsonElement>>(jsonStr)
+            val map = jsonMap.mapValues { (_, v) -> v.jsonPrimitive.content }
             ToolCallRequest(toolName, map)
         } catch (_: Exception) {
             ToolCallRequest(toolName, emptyMap())
@@ -326,13 +329,11 @@ class Agent(
     )
 
     companion object {
-        const val DEFAULT_MODEL = "nvidia/nemotron-3-nano-30b-a3b:free"
-
         val MODELS = listOf(
             "google/gemma-3n-e2b-it:free",
             "nvidia/nemotron-3-super-120b-a12b:free",
             "stepfun/step-3.5-flash:free",
-            DEFAULT_MODEL
+            "nvidia/nemotron-3-nano-30b-a3b:free"
         )
     }
 }

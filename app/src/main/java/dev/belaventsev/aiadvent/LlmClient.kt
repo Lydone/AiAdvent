@@ -7,7 +7,7 @@ import kotlinx.coroutines.delay
  * Encapsulates retry logic, auth, and request construction.
  */
 class LlmClient(
-    private val model: String = Agent.DEFAULT_MODEL,
+    private val model: String = Agent.MODELS[1],
     private val apiKey: String = BuildConfig.OPENROUTER_API_KEY
 ) {
 
