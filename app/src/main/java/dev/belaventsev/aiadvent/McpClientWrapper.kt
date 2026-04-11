@@ -14,21 +14,56 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
- * Reusable wrapper around MCP SDK client.
- * Creates a fresh connection for each operation, then closes.
+ * Multi-server MCP client wrapper.
+ * Aggregates tools from all registered servers and routes calls to the correct one.
  */
 class McpClientWrapper(
-    private val serverUrl: String = MCP_SERVER_URL
+    private val servers: List<McpServer> = DEFAULT_SERVERS
 ) {
 
-    suspend fun listTools(): List<Tool> =
-        withConnection { it.listTools().tools }
+    data class McpServer(
+        val name: String,
+        val url: String
+    )
+
+    // toolName -> serverUrl mapping, populated on listTools()
+    private val toolRouting = mutableMapOf<String, String>()
+
+    suspend fun listTools(): List<Tool> {
+        toolRouting.clear()
+        val allTools = mutableListOf<Tool>()
+
+        for (server in servers) {
+            try {
+                val tools = withConnection(server.url) { it.listTools().tools }
+                tools.forEach { tool ->
+                    toolRouting[tool.name] = server.url
+                }
+                allTools.addAll(tools)
+                println("[MCP] ${server.name}: ${tools.size} tools loaded")
+            } catch (e: Exception) {
+                println("[MCP] ${server.name}: connection failed — ${e.message}")
+            }
+        }
+
+        return allTools
+    }
 
     suspend fun callTool(name: String, arguments: Map<String, String>): String {
+        val serverUrl = toolRouting[name]
+            ?: throw IllegalArgumentException("Unknown tool: '$name'. Available: ${toolRouting.keys}")
+
         val jsonArgs: Map<String, JsonElement> = arguments.mapValues { (_, v) ->
-            JsonPrimitive(v)
+            val intVal = v.toIntOrNull()
+            val doubleVal = v.toDoubleOrNull()
+            when {
+                intVal != null -> JsonPrimitive(intVal)
+                doubleVal != null -> JsonPrimitive(doubleVal)
+                v == "true" || v == "false" -> JsonPrimitive(v.toBoolean())
+                else -> JsonPrimitive(v)
+            }
         }
-        val result: CallToolResult = withConnection { it.callTool(name, jsonArgs) }
+        val result: CallToolResult = withConnection(serverUrl) { it.callTool(name, jsonArgs) }
         return result.content
             .filterIsInstance<TextContent>()
             .joinToString("\n") { it.text }
@@ -39,29 +74,41 @@ class McpClientWrapper(
         val tools = listTools()
         if (tools.isEmpty()) return ""
 
+        // Group tools by server for clarity
+        val toolsByServer = tools.groupBy { tool ->
+            val url = toolRouting[tool.name] ?: "unknown"
+            servers.find { it.url == url }?.name ?: url
+        }
+
         return buildString {
             appendLine("AVAILABLE TOOLS (MCP):")
             appendLine("To use a tool, respond with EXACTLY this format on a SEPARATE line:")
             appendLine("[TOOL_CALL] tool_name {\"param\": \"value\"}")
             appendLine()
-            appendLine("Available tools:")
-            tools.forEach { tool ->
-                appendLine("- ${tool.name}: ${tool.description ?: "no description"}")
-                tool.inputSchema.properties?.let { props ->
-                    val required = tool.inputSchema.required ?: emptyList()
-                    props.entries.forEach { (name, schema) ->
-                        val req = if (name in required) " (required)" else " (optional)"
-                        appendLine("    $name$req: $schema")
+
+            for ((serverName, serverTools) in toolsByServer) {
+                appendLine("=== $serverName ===")
+                serverTools.forEach { tool ->
+                    appendLine("- ${tool.name}: ${tool.description ?: "no description"}")
+                    tool.inputSchema.properties?.let { props ->
+                        val required = tool.inputSchema.required ?: emptyList()
+                        props.entries.forEach { (name, schema) ->
+                            val req = if (name in required) " (required)" else " (optional)"
+                            appendLine("    $name$req: $schema")
+                        }
                     }
                 }
+                appendLine()
             }
-            appendLine()
-            appendLine("IMPORTANT: Use [TOOL_CALL] ONLY when you need external data.")
-            appendLine("After you receive tool results, formulate a natural response to the user.")
+
+            appendLine("IMPORTANT:")
+            appendLine("- Use [TOOL_CALL] ONLY when you need external data.")
+            appendLine("- You can call tools from DIFFERENT servers in sequence.")
+            appendLine("- After you receive tool results, decide if another tool call is needed or respond to the user.")
         }
     }
 
-    private suspend fun <T> withConnection(block: suspend (Client) -> T): T {
+    private suspend fun <T> withConnection(serverUrl: String, block: suspend (Client) -> T): T {
         val httpClient = HttpClient {
             install(SSE)
             install(DefaultRequest) {
@@ -69,6 +116,11 @@ class McpClientWrapper(
                     HttpHeaders.UserAgent,
                     "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
                 )
+            }
+            install(io.ktor.client.plugins.HttpTimeout) {
+                connectTimeoutMillis = 30_000
+                requestTimeoutMillis = 60_000
+                socketTimeoutMillis = 60_000
             }
         }
 
@@ -96,6 +148,9 @@ class McpClientWrapper(
     }
 
     companion object {
-        const val MCP_SERVER_URL = "http://10.0.2.2:3001/mcp"
+        val DEFAULT_SERVERS = listOf(
+            McpServer(name = "Weather", url = "http://10.0.2.2:3001/mcp"),
+            McpServer(name = "VkusVill", url = "https://mcp001.vkusvill.ru/mcp")
+        )
     }
 }
