@@ -150,7 +150,6 @@ class McpClientWrapper(
     companion object {
         val DEFAULT_SERVERS = listOf(
             McpServer(name = "Weather", url = "http://10.0.2.2:3001/mcp"),
-            McpServer(name = "VkusVill", url = "https://mcp001.vkusvill.ru/mcp")
         )
     }
 }

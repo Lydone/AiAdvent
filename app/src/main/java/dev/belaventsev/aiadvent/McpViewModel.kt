@@ -50,4 +50,8 @@ class McpViewModel : ViewModel() {
             }
         }
     }
+
+    fun clearResult() {
+        _uiState.update { it.copy(callResult = null) }
+    }
 }
