@@ -351,7 +351,7 @@ class Agent(
         val MODELS = listOf(
             "google/gemma-3n-e2b-it:free",
             "nvidia/nemotron-3-super-120b-a12b:free",
-            "stepfun/step-3.5-flash:free",
+            "arcee-ai/trinity-large-preview:free",
             "nvidia/nemotron-3-nano-30b-a3b:free"
         )
     }

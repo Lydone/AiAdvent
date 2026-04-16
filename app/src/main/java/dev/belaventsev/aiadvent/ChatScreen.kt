@@ -52,6 +52,7 @@ fun ChatScreen(
     onBack: () -> Unit = {},
     onInvariants: () -> Unit = {},
     onMcpTools: () -> Unit = {},
+    onRag: () -> Unit = {},
     modifier: Modifier = Modifier,
     vm: ChatViewModel = viewModel()
 ) {
@@ -81,6 +82,9 @@ fun ChatScreen(
                     }
                 },
                 actions = {
+                    androidx.compose.material3.TextButton(onClick = onRag) {
+                        Text("RAG")
+                    }
                     IconButton(onClick = onMcpTools) {
                         Icon(painterResource(R.drawable.ic_build), contentDescription = "MCP Tools")
                     }

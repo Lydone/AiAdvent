@@ -43,7 +43,8 @@ class MainActivity : ComponentActivity() {
                         ChatScreen(
                             onBack = { navController.popBackStack() },
                             onInvariants = { navController.navigate("invariants/$userId") },
-                            onMcpTools = { navController.navigate("mcp-tools") }
+                            onMcpTools = { navController.navigate("mcp-tools") },
+                            onRag = { navController.navigate("rag") }
                         )
                     }
 
@@ -62,6 +63,12 @@ class MainActivity : ComponentActivity() {
 
                     composable("mcp-tools") {
                         McpToolsScreen(
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+
+                    composable("rag") {
+                        RagScreen(
                             onBack = { navController.popBackStack() }
                         )
                     }
