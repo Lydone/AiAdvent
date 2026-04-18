@@ -19,6 +19,14 @@ class RagViewModel : ViewModel() {
         _uiState.update { it.copy(question = text) }
     }
 
+    fun toggleRewrite() {
+        _uiState.update { it.copy(rewriteEnabled = !it.rewriteEnabled) }
+    }
+
+    fun toggleRerank() {
+        _uiState.update { it.copy(rerankEnabled = !it.rerankEnabled) }
+    }
+
     fun askWithoutRag() {
         val q = _uiState.value.question.trim()
         if (q.isEmpty()) return
@@ -40,7 +48,8 @@ class RagViewModel : ViewModel() {
     }
 
     fun askWithRag() {
-        val q = _uiState.value.question.trim()
+        val state = _uiState.value
+        val q = state.question.trim()
         if (q.isEmpty()) return
 
         _uiState.update {
@@ -48,18 +57,22 @@ class RagViewModel : ViewModel() {
                 isLoadingRag = true,
                 ragAnswer = null,
                 ragSources = emptyList(),
-                ragContext = "",
+                ragDiagnostics = null,
                 error = null
             )
         }
         viewModelScope.launch {
             try {
-                val response = engine.askWithRag(q)
+                val response = engine.askWithRag(
+                    question = q,
+                    rewriteEnabled = state.rewriteEnabled,
+                    rerankEnabled = state.rerankEnabled
+                )
                 _uiState.update {
                     it.copy(
                         ragAnswer = response.answer,
                         ragSources = response.sources,
-                        ragContext = response.rawContext,
+                        ragDiagnostics = response.diagnostics,
                         isLoadingRag = false
                     )
                 }
@@ -76,7 +89,11 @@ class RagViewModel : ViewModel() {
 
     fun clear() {
         _uiState.update {
-            RagUiState(question = it.question)
+            RagUiState(
+                question = it.question,
+                rewriteEnabled = it.rewriteEnabled,
+                rerankEnabled = it.rerankEnabled
+            )
         }
     }
 }
