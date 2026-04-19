@@ -66,12 +66,15 @@ class Agent(
         // 1. Save user message
         chatDao.insert(ChatMessageEntity.fromChatMessage(userId, ChatMessage("user", query)))
 
-        // 2. Assemble prompt
+        // 2. RAG: search documents for context
+        val ragContext = searchDocuments(query)
+
+        // 3. Assemble prompt (with RAG context)
         val history = chatDao.getAll(userId)
         val invariants = collectInvariants()
-        val apiMessages = assemblePrompt(history, invariants)
+        val apiMessages = assemblePrompt(history, invariants, ragContext)
 
-        // 3. Call LLM
+        // 4. Call LLM
         var response = llm.chat(apiMessages)
 
         // 4. Validate against invariants; retry once if violated
@@ -257,9 +260,36 @@ class Agent(
     private suspend fun collectInvariants(): List<String> =
         invariantDao.getAll(userId).map { it.text }
 
+    /**
+     * Search documents via MCP for RAG context.
+     * Returns formatted context string or empty if search fails/no results.
+     */
+    private suspend fun searchDocuments(query: String): String {
+        if (mcpClient == null) return ""
+
+        return try {
+            // Ensure tools are loaded
+            mcpClient.listTools()
+
+            val result = mcpClient.callTool(
+                name = "search_documents",
+                arguments = mapOf(
+                    "query" to query,
+                    "strategy" to "all",
+                    "top_k" to "3"
+                )
+            )
+
+            if (result.contains("Ничего не найдено")) "" else result
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
     private suspend fun assemblePrompt(
         history: List<ChatMessageEntity>,
-        invariants: List<String>
+        invariants: List<String>,
+        ragContext: String = ""
     ): List<ChatMessage> {
         val longTerm = longTermMemoryDao.get(userId)
         val working = workingMemoryDao.get(userId)
@@ -297,6 +327,24 @@ class Agent(
             }
             if (toolsSection.isNotBlank()) {
                 add(ChatMessage("system", toolsSection))
+            }
+            if (ragContext.isNotBlank()) {
+                add(
+                    ChatMessage(
+                        "system",
+                        "ДОКУМЕНТНЫЙ КОНТЕКСТ (найден автоматически по запросу пользователя):\n\n" +
+                                "$ragContext\n\n" +
+                                "ПРАВИЛА ИСПОЛЬЗОВАНИЯ КОНТЕКСТА:\n" +
+                                "1. Если контекст содержит ответ — используй его.\n" +
+                                "2. ОБЯЗАТЕЛЬНО приведи 1-2 цитаты из контекста в кавычках «». " +
+                                "Ответ без цитаты — это ОШИБКА.\n" +
+                                "3. Пример формата ответа:\n" +
+                                "   Стоимость составляет 100 рублей.\n" +
+                                "   Цитата: «Стоимость проезда в одну сторону 100 рублей.»\n" +
+                                "4. Если контекст не относится к вопросу — игнорируй его и отвечай как обычно, без цитат.\n" +
+                                "5. Не выдумывай факты. Если не знаешь — скажи об этом."
+                    )
+                )
             }
             if (invariants.isNotEmpty()) {
                 val numbered = invariants.mapIndexed { i, text -> "${i + 1}. $text" }
