@@ -28,14 +28,30 @@ class RagViewModel : ViewModel() {
     }
 
     fun askWithoutRag() {
+        _uiState.update {
+            it.copy(
+                isLoadingPlain = true,
+                plainAnswer = null,
+                plainDurationMs = null,
+                error = null
+            )
+        }
         val q = _uiState.value.question.trim()
         if (q.isEmpty()) return
 
         _uiState.update { it.copy(isLoadingPlain = true, plainAnswer = null, error = null) }
         viewModelScope.launch {
             try {
+                val startMs = System.currentTimeMillis()
                 val response = engine.askWithoutRag(q)
-                _uiState.update { it.copy(plainAnswer = response.answer, isLoadingPlain = false) }
+                val elapsedMs = System.currentTimeMillis() - startMs
+                _uiState.update {
+                    it.copy(
+                        plainAnswer = response.answer,
+                        plainDurationMs = elapsedMs,
+                        isLoadingPlain = false
+                    )
+                }
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
@@ -48,6 +64,16 @@ class RagViewModel : ViewModel() {
     }
 
     fun askWithRag() {
+        _uiState.update {
+            it.copy(
+                isLoadingRag = true,
+                ragAnswer = null,
+                ragSources = emptyList(),
+                ragDiagnostics = null,
+                ragDurationMs = null,
+                error = null
+            )
+        }
         val state = _uiState.value
         val q = state.question.trim()
         if (q.isEmpty()) return
@@ -63,16 +89,19 @@ class RagViewModel : ViewModel() {
         }
         viewModelScope.launch {
             try {
+                val startMs = System.currentTimeMillis()
                 val response = engine.askWithRag(
                     question = q,
                     rewriteEnabled = state.rewriteEnabled,
                     rerankEnabled = state.rerankEnabled
                 )
+                val elapsedMs = System.currentTimeMillis() - startMs
                 _uiState.update {
                     it.copy(
                         ragAnswer = response.answer,
                         ragSources = response.sources,
                         ragDiagnostics = response.diagnostics,
+                        ragDurationMs = elapsedMs,
                         isLoadingRag = false
                     )
                 }

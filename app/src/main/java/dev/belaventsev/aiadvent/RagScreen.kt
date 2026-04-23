@@ -150,6 +150,7 @@ fun RagScreen(
                 title = "Без RAG",
                 isLoading = state.isLoadingPlain,
                 answer = state.plainAnswer,
+                durationMs = state.plainDurationMs,
                 containerColor = MaterialTheme.colorScheme.surfaceVariant,
                 contentColor = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -161,7 +162,8 @@ fun RagScreen(
                 isLoading = state.isLoadingRag,
                 answer = state.ragAnswer,
                 sources = state.ragSources,
-                diagnostics = state.ragDiagnostics
+                diagnostics = state.ragDiagnostics,
+                durationMs = state.ragDurationMs
             )
 
             Spacer(Modifier.height(24.dp))
@@ -174,6 +176,7 @@ private fun AnswerBlock(
     title: String,
     isLoading: Boolean,
     answer: String?,
+    durationMs: Long?,
     containerColor: Color,
     contentColor: Color
 ) {
@@ -186,7 +189,14 @@ private fun AnswerBlock(
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(12.dp)) {
-            Text(title, style = MaterialTheme.typography.titleSmall, color = contentColor)
+            Text(
+                buildString {
+                    append(title)
+                    if (durationMs != null) append("  ·  ${"%.1f".format(durationMs / 1000.0)} сек")
+                },
+                style = MaterialTheme.typography.titleSmall,
+                color = contentColor
+            )
             Spacer(Modifier.height(4.dp))
 
             when {
@@ -229,7 +239,8 @@ private fun RagAnswerBlock(
     isLoading: Boolean,
     answer: String?,
     sources: List<String>,
-    diagnostics: RagEngine.RagDiagnostics?
+    diagnostics: RagEngine.RagDiagnostics?,
+    durationMs: Long?
 ) {
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
@@ -244,7 +255,14 @@ private fun RagAnswerBlock(
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(12.dp)) {
-            Text("С RAG", style = MaterialTheme.typography.titleSmall, color = contentColor)
+            Text(
+                buildString {
+                    append("С RAG")
+                    if (durationMs != null) append("  ·  ${"%.1f".format(durationMs / 1000.0)} сек")
+                },
+                style = MaterialTheme.typography.titleSmall,
+                color = contentColor
+            )
             Spacer(Modifier.height(4.dp))
 
             when {
