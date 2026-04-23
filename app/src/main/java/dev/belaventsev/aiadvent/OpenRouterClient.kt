@@ -7,20 +7,25 @@ import retrofit2.converter.gson.GsonConverterFactory
 
 object OpenRouterClient {
 
-    private const val BASE_URL = "https://openrouter.ai/api/"
-    val logging = HttpLoggingInterceptor().apply {
+    private val logging = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY
     }
-    val service: OpenRouterService by lazy {
-        val okhttp = OkHttpClient.Builder()
+
+    private val okhttp: OkHttpClient by lazy {
+        OkHttpClient.Builder()
             .addInterceptor(logging)
             .build()
-
-        Retrofit.Builder()
-            .baseUrl(BASE_URL)
-            .client(okhttp)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-            .create(OpenRouterService::class.java)
     }
+
+    private val servicesByBaseUrl = mutableMapOf<String, OpenRouterService>()
+
+    fun serviceFor(baseUrl: String): OpenRouterService =
+        servicesByBaseUrl.getOrPut(baseUrl) {
+            Retrofit.Builder()
+                .baseUrl(baseUrl)
+                .client(okhttp)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build()
+                .create(OpenRouterService::class.java)
+        }
 }

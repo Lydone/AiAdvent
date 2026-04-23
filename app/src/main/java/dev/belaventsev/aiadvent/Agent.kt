@@ -19,7 +19,7 @@ class Agent(
     private val workingMemoryDao: WorkingMemoryDao,
     private val longTermMemoryDao: LongTermMemoryDao,
     private val invariantDao: InvariantDao,
-    private val llm: LlmClient = LlmClient(),
+    private val llmProvider: () -> LlmClient = { LlmClientFactory.current() },
     private val mcpClient: McpClientWrapper? = null,
     private val windowSize: Int = 6
 ) {
@@ -75,14 +75,14 @@ class Agent(
         val apiMessages = assemblePrompt(history, invariants, ragContext)
 
         // 4. Call LLM
-        var response = llm.chat(apiMessages)
+        var response = llmProvider().chat(apiMessages)
 
         // 4. Validate against invariants; retry once if violated
         if (invariants.isNotEmpty()) {
             val violation = checkInvariants(response.content, invariants)
             if (violation != null) {
                 val correctedMessages = apiMessages + invariantViolationHint(violation)
-                response = llm.chat(correctedMessages)
+                response = llmProvider().chat(correctedMessages)
             }
         }
 
@@ -126,7 +126,7 @@ class Agent(
                                 "Do NOT repeat tool results verbatim — summarize them."
                     )
 
-            val nextResponse = llm.chat(nextMessages)
+            val nextResponse = llmProvider().chat(nextMessages)
             assistantContent = nextResponse.content
         }
 
@@ -199,7 +199,7 @@ class Agent(
             append("Output ONLY the state summary in the user's language. No explanations.")
         }
 
-        val result = llm.ask(listOf(ChatMessage("user", prompt)))
+        val result = llmProvider().ask(listOf(ChatMessage("user", prompt)))
         workingMemoryDao.upsert(
             WorkingMemoryEntity(
                 userId = userId,
@@ -247,7 +247,7 @@ class Agent(
             append("No explanations, no markdown — only key-value pairs.")
         }
 
-        val result = llm.ask(listOf(ChatMessage("user", prompt)))
+        val result = llmProvider().ask(listOf(ChatMessage("user", prompt)))
         longTermMemoryDao.upsert(
             LongTermMemoryEntity(
                 userId = userId,
@@ -380,7 +380,7 @@ class Agent(
             append("Nothing else.")
         }
 
-        val verdict = llm.ask(listOf(ChatMessage("user", prompt)))
+        val verdict = llmProvider().ask(listOf(ChatMessage("user", prompt)))
         val firstLine = verdict.lines().firstOrNull()?.trim()?.uppercase() ?: "OK"
 
         return if (firstLine.startsWith("VIOLATION")) {

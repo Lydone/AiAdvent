@@ -5,7 +5,7 @@ package dev.belaventsev.aiadvent
  * and LLM-based reranking.
  */
 class RagEngine(
-    private val llm: LlmClient = LlmClient(),
+    private val llmProvider: () -> LlmClient = { LlmClientFactory.current() },
     private val mcpClient: McpClientWrapper = McpClientWrapper(),
     private val initialTopK: Int = 7,      // wider retrieval for reranking
     private val finalTopK: Int = 3,        // how many chunks go into LLM context
@@ -56,7 +56,7 @@ class RagEngine(
             ),
             ChatMessage("user", question)
         )
-        val answer = llm.ask(messages, temperature = 0.3)
+        val answer = llmProvider().ask(messages, temperature = 0.3)
         return RagResponse(
             answer = answer,
             diagnostics = RagDiagnostics(originalQuery = question)
@@ -189,7 +189,7 @@ class RagEngine(
             ChatMessage("system", systemPrompt),
             ChatMessage("user", question)
         )
-        val answer = llm.ask(messages, temperature = 0.2)
+        val answer = llmProvider().ask(messages, temperature = 0.2)
 
         return RagResponse(
             answer = answer,
@@ -223,7 +223,8 @@ class RagEngine(
             |Вопрос: $question
         """.trimMargin()
 
-        val result = llm.ask(listOf(ChatMessage("user", prompt)), temperature = 0.2).trim()
+        val result =
+            llmProvider().ask(listOf(ChatMessage("user", prompt)), temperature = 0.2).trim()
         return if (result.length in 5..500) result else question
     }
 
@@ -255,7 +256,7 @@ class RagEngine(
         """.trimMargin()
 
         val response = try {
-            llm.ask(listOf(ChatMessage("user", prompt)), temperature = 0.1).trim()
+            llmProvider().ask(listOf(ChatMessage("user", prompt)), temperature = 0.1).trim()
         } catch (_: Exception) {
             return chunks // fallback: keep original order
         }

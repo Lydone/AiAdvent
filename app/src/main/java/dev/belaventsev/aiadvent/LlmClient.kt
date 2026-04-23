@@ -2,23 +2,21 @@ package dev.belaventsev.aiadvent
 
 import kotlinx.coroutines.delay
 
-/**
- * Wrapper around OpenRouter API.
- * Encapsulates retry logic, auth, and request construction.
- */
 class LlmClient(
-    private val model: String = Agent.MODELS[2],
-    private val apiKey: String = BuildConfig.OPENROUTER_API_KEY
+    private val baseUrl: String,
+    private val model: String,
+    private val apiKey: String?
 ) {
 
-    /** Send chat messages and return assistant's text response */
+    private val service get() = OpenRouterClient.serviceFor(baseUrl)
+
     suspend fun chat(
         messages: List<ChatMessage>,
         temperature: Double = 0.7
     ): LlmResponse {
         val response = retrying {
-            OpenRouterClient.service.chat(
-                auth = "Bearer $apiKey",
+            service.chat(
+                auth = apiKey?.let { "Bearer $it" },
                 request = ChatRequest(model, messages, temperature)
             )
         }
@@ -28,7 +26,6 @@ class LlmClient(
         )
     }
 
-    /** Convenience: send messages, return only text */
     suspend fun ask(
         messages: List<ChatMessage>,
         temperature: Double = 0.3
@@ -57,5 +54,3 @@ data class LlmResponse(
     val content: String,
     val usage: Usage?
 )
-
-// Что посмотреть в Нижнем Новгороде зимой?

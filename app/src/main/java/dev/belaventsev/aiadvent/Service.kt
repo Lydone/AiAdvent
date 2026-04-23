@@ -8,7 +8,7 @@ interface OpenRouterService {
 
     @POST("v1/chat/completions")
     suspend fun chat(
-        @Header("Authorization") auth: String,
+        @Header("Authorization") auth: String?,
         @Body request: ChatRequest
     ): ChatResponse
 }

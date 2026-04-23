@@ -20,6 +20,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -57,6 +59,7 @@ fun ChatScreen(
     vm: ChatViewModel = viewModel()
 ) {
     val state by vm.uiState.collectAsState()
+    val provider by LlmProviderHolder.provider.collectAsState()
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
 
@@ -82,6 +85,21 @@ fun ChatScreen(
                     }
                 },
                 actions = {
+                    FilterChip(
+                        selected = provider == LlmProvider.LOCAL,
+                        onClick = { LlmProviderHolder.toggle() },
+                        label = {
+                            Text(
+                                provider.displayName,
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                            selectedLabelColor = MaterialTheme.colorScheme.onTertiaryContainer
+                        ),
+                        modifier = Modifier.padding(end = 4.dp)
+                    )
                     androidx.compose.material3.TextButton(onClick = onRag) {
                         Text("RAG")
                     }
