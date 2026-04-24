@@ -11,9 +11,7 @@ data class ChatRequest(
     val model: String,
     val messages: List<ChatMessage>,
     val temperature: Double? = null,
-//    val plugins: List<PluginConfig> = listOf(
-//        PluginConfig(id = "context-compression", enabled = false)
-//    )
+    val options: Map<String, Int>? = null
 )
 
 data class ChatChoice(

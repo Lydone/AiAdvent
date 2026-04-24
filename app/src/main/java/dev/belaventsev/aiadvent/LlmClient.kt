@@ -5,7 +5,8 @@ import kotlinx.coroutines.delay
 class LlmClient(
     private val baseUrl: String,
     private val model: String,
-    private val apiKey: String?
+    private val apiKey: String?,
+    private val numCtx: Int? = null
 ) {
 
     private val service get() = OpenRouterClient.serviceFor(baseUrl)
@@ -17,7 +18,12 @@ class LlmClient(
         val response = retrying {
             service.chat(
                 auth = apiKey?.let { "Bearer $it" },
-                request = ChatRequest(model, messages, temperature)
+                request = ChatRequest(
+                    model = model,
+                    messages = messages,
+                    temperature = temperature,
+                    options = numCtx?.let { mapOf("num_ctx" to it) }
+                )
             )
         }
         return LlmResponse(

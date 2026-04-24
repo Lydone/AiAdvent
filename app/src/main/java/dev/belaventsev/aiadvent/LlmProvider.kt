@@ -43,11 +43,11 @@ object LlmClientFactory {
             model = Agent.MODELS[2],
             apiKey = BuildConfig.OPENROUTER_API_KEY
         )
-
         LlmProvider.LOCAL -> LlmClient(
             baseUrl = LOCAL_BASE_URL,
             model = LOCAL_MODEL,
-            apiKey = null
+            apiKey = null,
+            numCtx = 4096
         )
     }
 
